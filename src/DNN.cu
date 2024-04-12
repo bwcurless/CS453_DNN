@@ -55,41 +55,40 @@ int main(int argc, char *argv[]) {
 
     // Allocate memory for all intermediate steps on the GPU. This includes caching inputs to each
     // layer, outputs, and gradients used for backpropagation Input layer
-    float *dev_inputLayer;
-    int inputLayerSize = sizeof(float) * MINIBATCHSIZE;
-    gpuErrchk(cudaMalloc((float **)&dev_inputLayer, inputLayerSize));
+    float *dev_x1;
+    gpuErrchk(cudaMalloc((float **)&dev_x1, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
+
+    // The expected classes of the minibatch, used to train the model
+    float *dev_y;
+    gpuErrchk(cudaMalloc((float **)&dev_y, sizeof(float) * MINIBATCHSIZE));
 
     // W1. The weight matrix we are trying to find
     float *dev_W1;
     gpuErrchk(cudaMalloc((float **)&dev_W1, sizeof(float) * CLASSES * INPUTSIZE));
 
-    // dL/dW1. How much the weights effect the loss
-    float *dev_dLdW1;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdW1, sizeof(float) * CLASSES * INPUTSIZE));
-
     // b1. The biases for each output of the linear classifier. The +b term
     float *dev_b1;
     gpuErrchk(cudaMalloc((float **)&dev_b1, sizeof(float) * CLASSES));
-
-    // dL/dB1. How much the biases effect the loss
-    float *dev_dldB1;
-    gpuErrchk(cudaMalloc((float **)&dev_dldB1, sizeof(float) * CLASSES));
 
     // Intermediate Scores f(x). The linear classifier's predicted scores f(x)=W*x+b
     float *dev_f1;
     gpuErrchk(cudaMalloc((float **)&dev_f1, sizeof(float) * CLASSES));
 
-    // Softmax scores (Probabilities input is of a certain class)
-    float *dev_softmax_scores;
-    gpuErrchk(cudaMalloc((float **)&dev_softmax_scores, sizeof(float) * CLASSES));
+    // dL/dW1. How much the weights effect the loss
+    float *dev_dLdW1;
+    gpuErrchk(cudaMalloc((float **)&dev_dLdW1, sizeof(float) * CLASSES * INPUTSIZE));
+
+    // dL/db1. How much the biases effect the loss
+    float *dev_dLdb1;
+    gpuErrchk(cudaMalloc((float **)&dev_dLdb1, sizeof(float) * CLASSES));
 
     // Softmax loss
-    float *dev_loss;
-    gpuErrchk(cudaMalloc((float **)&dev_loss, sizeof(float)));
+    float *dev_softmax_loss;
+    gpuErrchk(cudaMalloc((float **)&dev_softmax_loss, sizeof(float)));
 
-    // Softmax dL/df1. How much the loss changes with respect to each class score
-    float *dev_dLdf1;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdf1, sizeof(float) * CLASSES));
+    // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
+    float *dev_dLdf;
+    gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * CLASSES));
 
     // ****** Initialize Model Parameters *********
 
@@ -121,21 +120,44 @@ int main(int argc, char *argv[]) {
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
         // Iterate through as many minibatches as we need to complete an entire epoch
         for (int batch = 0; batch < ceil(1.0 * TRAINSIZE / MINIBATCHSIZE); batch++) {
-            // Push minibatch to GPU
+            // Sample a minibatch of samples from training data
+
+            // Push minibatch to GPU. Push images and expected classes
             // gpuErrchk(cudaMemcpy(dev_inputLayer, &trainData[minibatchStartIndex], sizeof(float) *
             // MINIBATCHSIZE);
 
-            // Perform gradient descent here
-            // TODO Optional perform Stochastic gradient descent and iterate on a minibatch of
-            // inputs to speed up convergence
+            // Run forward and backward passes on minibatch of data
 
-            // Take all images in training dataset and pass them through the network
             // Each layer will cache it's gradient in the pre allocated memory space as we go to
             // prepare for backpropogation
+            // Compute f(x)=W1*x+b1 forward pass
+            dim3 blockDim(32, 32);
+            // Number of threads is the size of the output matrix
+            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
+            affineForward<<<gridDim, blockDim>>>(dev_W1, dev_x1, dev_b1, CLASSES, MINIBATCHSIZE,
+                                                 INPUTSIZE, dev_f1);
+
+            // This layer computes the loss and the gradient of the loss with respect to the scores
+            // input to this layer
+            dim3 blockDim(32, 32);
+            // Number of threads is the size of the output matrix of scores
+            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
+            softmaxLoss<<<gridDim, blockDim>>>(dev_f1, dev_y, CLASSES, MINIBATCHSIZE,
+                                               dev_softmax_loss, dev_dLdf);
 
             // At this point we will have the loss computed for every input image, and the gradient
-            // of our softmax function. We now begin to backpropogate the gradients Backpropogate
-            // the gradient with respect to all parameters all the way through the network
+            // of our softmax function. We now begin to backpropogate the gradients
+            // Backpropogate the gradient with respect to all parameters all the way through the
+            // network
+
+            // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given the
+            // upstream gradients and the last inputs
+            dim3 blockDim(32, 32);
+            // Number of threads is the size of the output matrix
+            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
+            affineBackward<<<gridDim, blockDim>>>(dev_dLdf, dev_dLdW1, dev_dLdb1, dev_W1, dev_x1,
+                                                  dev_b1, CLASSES, MINIBATCHSIZE, INPUTSIZE,
+                                                  dev_f1);
 
             // Using our learning rate, update our parameters based on the gradient
         }
