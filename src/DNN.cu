@@ -15,7 +15,6 @@
 #include <random>
 
 #include "affineLayer.h"
-#include "gradientDescent.h"
 #include "softmaxLoss.h"
 
 // Run everything on CPU
@@ -34,6 +33,18 @@
 #define LEARNINGRATE 0.001
 #define ALPHA 0.00001
 #define MOMENTUMDECAY 0.75
+
+/*! \struct _learnParams_t
+ *  \brief Hyper parameters for gradient descent
+ *
+ *  Contains all the hyper parameters for performing gradient descent. Uses a momentum based
+ * approach with exponential decay of old gradient
+ */
+typedef struct _learnParams_t {
+    float learningRate;  /*!< Gradient step size */
+    float momentumDecay; /*!< Gradient decay for momentum */
+    float regStrength;   /*!< Regularization strength for fully connected layers */
+} learnParams_t;
 
 // Error checking GPU calls
 #define gpuErrchk(ans) \
@@ -145,6 +156,7 @@ int main(int argc, char *argv[]) {
     learnParams_t *learnParameters;
     learnParameters->learningRate = LEARNINGRATE;
     learnParameters->momentumDecay = MOMENTUMDECAY;
+    learnParameters->regStrength = ALPHA;
 
     // Descend gradient for this many epochs
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
@@ -156,10 +168,8 @@ int main(int argc, char *argv[]) {
             // gpuErrchk(cudaMemcpy(dev_inputLayer, &trainData[minibatchStartIndex], sizeof(float) *
             // MINIBATCHSIZE);
 
-            // Run forward and backward passes on minibatch of data
+            // Run forward and backward passes on minibatch of data, and update the gradient
 
-            // Each layer will cache it's gradient in the pre allocated memory space as we go to
-            // prepare for backpropogation
             // Compute f(x)=W1*x+b1 forward pass
             dim3 blockDim(32, 32);
             // Number of threads is the size of the output matrix
@@ -175,8 +185,6 @@ int main(int argc, char *argv[]) {
 
             // At this point we will have the loss computed for every input image, and the gradient
             // of our softmax function. We now begin to backpropogate the gradients
-            // Backpropogate the gradient with respect to all parameters all the way through the
-            // network
 
             // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given the
             // upstream gradients and the last inputs
@@ -187,14 +195,10 @@ int main(int argc, char *argv[]) {
 
             // Using our learning rate, update our parameters based on the gradient
 
-            // Update W1 weights
+            // Update Affine1 layer weights
             dim3 blockDim(32, 32);
             dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            gradientDescentRegularization<<<gridDim, blockDim>>>(learnParameters, ALPHA, dev_W1,
-                                                                 dev_dLdW1, CLASSES * INPUTSIZE);
-
-            // Update b1 weights
-            gradientDescent<<<1, 32>>>(learnParameters, dev_b1, dev_dLdb1, CLASSES);
+            affineUpdate<<<gridDim, blockDim>>>(learnParameters, aff1Inputs, aff1Grads);
 
             // Print out the loss for debugging
             float loss;

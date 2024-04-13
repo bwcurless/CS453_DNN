@@ -39,4 +39,8 @@ __global__ void affineForward(const AffineInputs *inputs);
  * \return void
  */
 __global__ void affineBackward(const float* dLdf, const AffineInputs *inputs, const AffineGradients *gradients);
+
+// Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
+__global__ void affineUpdate(const learnParams_t *hyperParams, const AffineInputs *inputs, const AffineGradients *gradients);
+
 #endif /* ifndef __AFFINELAYER_H__ */
