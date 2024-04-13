@@ -13,13 +13,11 @@
 
 #include <iostream>
 #include <random>
+#include <vector>
 
 #include "affineLayer.h"
+#include "dataset.h"
 #include "softmaxLoss.h"
-
-// Run everything on CPU
-// If not defined, will run GPU implementation
-#define CPU
 
 // Number of classes to predict for on output layer
 #define CLASSES 10
@@ -33,6 +31,9 @@
 #define LEARNINGRATE 0.001
 #define ALPHA 0.00001
 #define MOMENTUMDECAY 0.75
+
+/* Function Prototypes */
+void forward(AffineInputs aff1Inputs);
 
 /*! \struct _learnParams_t
  *  \brief Hyper parameters for gradient descent
@@ -59,19 +60,25 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort =
 using namespace std;
 
 int main(int argc, char *argv[]) {
-    // Do some argument parsing
-    // Parse out the filename
+    char filename[256];
+    char *endptr;
+    if (argc < 2) {
+        fprintf(stderr, "Too few command line arguments. <pathToDataset> is required\n");
+        return EXIT_FAILURE;
+    }
+    strcpy(filename, argv[1]);
 
-    // Read in dataset from file
-    // Should have a training dataset, a validation dataset, and a test dataset
+    data_t *dataset = importDataset(filename, 0.6);
+    // Should have a training dataset and a validation dataset. x are our inputs, y are the expected
+    // outputs for each given input
 
     // ********* Construct the network *************
     // The network is essentially constructed from memory allocated to store all the data as it
-    // propagates through the different layers, and the kernels that implement the different layers,
-    // affine, ReLu, softmax, convolutional
+    // propagates through the different layers, and the kernels that implement the different
+    // layers, affine, ReLu, softmax, convolutional
 
-    // Allocate memory for all intermediate steps on the GPU. This includes caching inputs to each
-    // layer, outputs, and gradients used for backpropagation Input layer
+    // Allocate memory for all intermediate steps on the GPU. This includes caching inputs to
+    // each layer, outputs, and gradients used for backpropagation Input layer
     float *dev_x1;
     gpuErrchk(cudaMalloc((float **)&dev_x1, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
 
@@ -158,23 +165,24 @@ int main(int argc, char *argv[]) {
     learnParameters->momentumDecay = MOMENTUMDECAY;
     learnParameters->regStrength = ALPHA;
 
-    // Descend gradient for this many epochs
+    // Train for this many epochs
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
         // Iterate through as many minibatches as we need to complete an entire epoch
-        for (int batch = 0; batch < ceil(1.0 * TRAINSIZE / MINIBATCHSIZE); batch++) {
+        for (int batch = 0; batch < ceil(1.0 * yTrain->size / MINIBATCHSIZE); batch++) {
             // Sample a minibatch of samples from training data
+            unsigned int minibatchSize = MINIBATCHSIZE * INPUTSIZE;
+            char *minibatch = (char *)malloc(sizeof(char) * minibatchSize);
+
+            // TODO Sample the minibatch randomly from xTrain, and don't get any repeat inputs until
+            // we are onto the next epoch
 
             // Push minibatch to GPU. Push images and expected classes
-            // gpuErrchk(cudaMemcpy(dev_inputLayer, &trainData[minibatchStartIndex], sizeof(float) *
-            // MINIBATCHSIZE);
+            gpuErrchk(cudaMemcpy(dev_x1, minibatch, sizeof(char) * minibatchSize,
+                                 cudaMemcpyHostToDevice));
 
             // Run forward and backward passes on minibatch of data, and update the gradient
 
-            // Compute f(x)=W1*x+b1 forward pass
-            dim3 blockDim(32, 32);
-            // Number of threads is the size of the output matrix
-            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            affineForward<<<gridDim, blockDim>>>(affine1Inputs);
+            forward(aff1Inputs);
 
             // This layer computes the loss and the gradient of the loss with respect to the scores
             // input to this layer
@@ -210,11 +218,36 @@ int main(int argc, char *argv[]) {
     // TODO Optional, save model off so we don't have to retrain in the future
 
     // Evaluate accuracy of classifier on training dataset
+    float trainAccuracy;
+
+    // TODO Run all the xTrain data through the model and evaluate the accuracy
+    forward(aff1Inputs);
+
+    printf("Train Accuracy: %f\n", trainAccuracy);
 
     // Evaluate accuracy of classifier on validation dataset
+    float valAccuracy;
 
-    // Evaluate accuracy of classifier on test dataset (Don't really need to do this since this is
-    // mostly just for fun)
+    // TODO Do the same for xVal and yVal and evaluate accuracy
+
+    printf("Validation Accuracy: %f\n", valAccuracy);
 
     // Cleanup, free memory etc
+}
+
+/*! \brief Compute the forward pass
+ *
+ *  Used during training as well as for evaluating model performance. Evaluate forward pass for
+ * entire network
+ *
+ * \param aff1Inputs Inputs for first affine layer
+ * \return void
+ */
+void forward(AffineInputs aff1Inputs) {
+    // Compute f(x)=W1*x+b1 forward pass
+    dim3 blockDim(32, 32);
+    // Number of threads is the size of the output matrix
+    dim3 gridDim(ceil(1.0 * aff1Inputs.batchSize / blockDim.x),
+                 ceil(1.0 * aff1Inputs.numOutputs / blockDim.y));
+    affineForward<<<gridDim, blockDim>>>(aff1Inputs);
 }
