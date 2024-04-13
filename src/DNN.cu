@@ -2,6 +2,7 @@
 // the dataset, and then the accuracy will be evaluated.
 
 #include <complex.h>
+#include <cuda_runtime.h>
 #include <math.h>
 #include <omp.h>
 #include <stdio.h>
@@ -12,6 +13,8 @@
 
 #include <iostream>
 #include <random>
+
+#include "affineLayer.h"
 
 // Run everything on CPU
 // If not defined, will run GPU implementation
@@ -74,6 +77,15 @@ int main(int argc, char *argv[]) {
     float *dev_f1;
     gpuErrchk(cudaMalloc((float **)&dev_f1, sizeof(float) * CLASSES));
 
+    AffineInputs *aff1Inputs;
+    aff1Inputs->W = dev_W1;
+    aff1Inputs->x = dev_x1;
+    aff1Inputs->b = dev_b1;
+    aff1Inputs->f = dev_f1;
+    aff1Inputs->batchSize = MINIBATCHSIZE;
+    aff1Inputs->dataSize = INPUTSIZE;
+    aff1Inputs->numOutputs = CLASSES;
+
     // dL/dW1. How much the weights effect the loss
     float *dev_dLdW1;
     gpuErrchk(cudaMalloc((float **)&dev_dLdW1, sizeof(float) * CLASSES * INPUTSIZE));
@@ -81,6 +93,10 @@ int main(int argc, char *argv[]) {
     // dL/db1. How much the biases effect the loss
     float *dev_dLdb1;
     gpuErrchk(cudaMalloc((float **)&dev_dLdb1, sizeof(float) * CLASSES));
+
+    AffineGradients *aff1Grads;
+    aff1Grads->dLdB = dev_dLdb1;
+    aff1Grads->dLdW = dev_dLdW1;
 
     // Softmax loss
     float *dev_softmax_loss;
@@ -134,8 +150,7 @@ int main(int argc, char *argv[]) {
             dim3 blockDim(32, 32);
             // Number of threads is the size of the output matrix
             dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            affineForward<<<gridDim, blockDim>>>(dev_W1, dev_x1, dev_b1, CLASSES, MINIBATCHSIZE,
-                                                 INPUTSIZE, dev_f1);
+            affineForward<<<gridDim, blockDim>>>(affine1Inputs);
 
             // This layer computes the loss and the gradient of the loss with respect to the scores
             // input to this layer
@@ -155,9 +170,7 @@ int main(int argc, char *argv[]) {
             dim3 blockDim(32, 32);
             // Number of threads is the size of the output matrix
             dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            affineBackward<<<gridDim, blockDim>>>(dev_dLdf, dev_dLdW1, dev_dLdb1, dev_W1, dev_x1,
-                                                  dev_b1, CLASSES, MINIBATCHSIZE, INPUTSIZE,
-                                                  dev_f1);
+            affineBackward<<<gridDim, blockDim>>>(dev_dLdf, aff1Inputs, aff1Grads);
 
             // Using our learning rate, update our parameters based on the gradient
         }
