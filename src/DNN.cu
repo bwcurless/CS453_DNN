@@ -15,6 +15,8 @@
 #include <random>
 
 #include "affineLayer.h"
+#include "gradientDescent.h"
+#include "softmaxLoss.h"
 
 // Run everything on CPU
 // If not defined, will run GPU implementation
@@ -31,6 +33,7 @@
 // Hyper parameters
 #define LEARNINGRATE 0.001
 #define ALPHA 0.00001
+#define MOMENTUMDECAY 0.75
 
 // Error checking GPU calls
 #define gpuErrchk(ans) \
@@ -60,10 +63,6 @@ int main(int argc, char *argv[]) {
     // layer, outputs, and gradients used for backpropagation Input layer
     float *dev_x1;
     gpuErrchk(cudaMalloc((float **)&dev_x1, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
-
-    // The expected classes of the minibatch, used to train the model
-    float *dev_y;
-    gpuErrchk(cudaMalloc((float **)&dev_y, sizeof(float) * MINIBATCHSIZE));
 
     // W1. The weight matrix we are trying to find
     float *dev_W1;
@@ -98,6 +97,10 @@ int main(int argc, char *argv[]) {
     aff1Grads->dLdB = dev_dLdb1;
     aff1Grads->dLdW = dev_dLdW1;
 
+    // The expected classes of the minibatch, used to train the model
+    float *dev_y;
+    gpuErrchk(cudaMalloc((float **)&dev_y, sizeof(float) * MINIBATCHSIZE));
+
     // Softmax loss
     float *dev_softmax_loss;
     gpuErrchk(cudaMalloc((float **)&dev_softmax_loss, sizeof(float)));
@@ -105,6 +108,13 @@ int main(int argc, char *argv[]) {
     // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
     float *dev_dLdf;
     gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * CLASSES));
+
+    softmaxLoss_t *softmaxInputs;
+    softmaxInputs->loss = dev_softmax_loss;
+    softmaxInputs->dLdf = dev_dLdf;
+    softmaxInputs->f = dev_f1;
+    softmaxInputs->numClasses = CLASSES;
+    softmaxInputs->batchSize = MINIBATCHSIZE;
 
     // ****** Initialize Model Parameters *********
 
@@ -132,6 +142,10 @@ int main(int argc, char *argv[]) {
 
     // ******** Start of Optimization ************
 
+    learnParams_t *learnParameters;
+    learnParameters->learningRate = LEARNINGRATE;
+    learnParameters->momentumDecay = MOMENTUMDECAY;
+
     // Descend gradient for this many epochs
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
         // Iterate through as many minibatches as we need to complete an entire epoch
@@ -157,8 +171,7 @@ int main(int argc, char *argv[]) {
             dim3 blockDim(32, 32);
             // Number of threads is the size of the output matrix of scores
             dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            softmaxLoss<<<gridDim, blockDim>>>(dev_f1, dev_y, CLASSES, MINIBATCHSIZE,
-                                               dev_softmax_loss, dev_dLdf);
+            softmaxLoss<<<gridDim, blockDim>>>(softmaxInputs);
 
             // At this point we will have the loss computed for every input image, and the gradient
             // of our softmax function. We now begin to backpropogate the gradients
@@ -173,6 +186,20 @@ int main(int argc, char *argv[]) {
             affineBackward<<<gridDim, blockDim>>>(dev_dLdf, aff1Inputs, aff1Grads);
 
             // Using our learning rate, update our parameters based on the gradient
+
+            // Update W1 weights
+            dim3 blockDim(32, 32);
+            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
+            gradientDescentRegularization<<<gridDim, blockDim>>>(learnParameters, ALPHA, dev_W1,
+                                                                 dev_dLdW1, CLASSES * INPUTSIZE);
+
+            // Update b1 weights
+            gradientDescent<<<1, 32>>>(learnParameters, dev_b1, dev_dLdb1, CLASSES);
+
+            // Print out the loss for debugging
+            float loss;
+            gpuErrchk(cudaMemcpy(&loss, dev_softmax_loss, sizeof(float), cudaMemcpyDeviceToHost));
+            printf("\nSoftmax Loss: %f", loss);
         }
     }
 

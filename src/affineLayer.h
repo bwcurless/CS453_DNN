@@ -27,7 +27,7 @@ typedef struct AffineGradients{
  * \param  The inputs required to compute the forward pass of an affine layer.
  * \return void
  */
-__global__ void affineForward(const AffineInputs inputs);
+__global__ void affineForward(const AffineInputs *inputs);
 
 /*! \brief Computes backward pass of Affine Layer
  *
@@ -38,5 +38,5 @@ __global__ void affineForward(const AffineInputs inputs);
  * \param gradients The gradients that this backward pass computes will be stored here.
  * \return void
  */
-__global__ void affineBackward(const float* dLdf, const AffineInputs inputs, const AffineGradients gradients);
+__global__ void affineBackward(const float* dLdf, const AffineInputs *inputs, const AffineGradients *gradients);
 #endif /* ifndef __AFFINELAYER_H__ */
