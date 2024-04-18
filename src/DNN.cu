@@ -8,16 +8,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h> /* time */
 #include <unistd.h>
 
-#include <iostream>
 #include <random>
 #include <vector>
 
-#include "affineLayer.h"
+#include "ReLULayer.cuh"
+#include "affineLayer.cuh"
 #include "dataset.h"
-#include "softmaxLoss.h"
+#include "params.h"
+#include "softmaxLoss.cuh"
 
 // Number of classes to predict for on output layer
 #define CLASSES 10
@@ -33,19 +33,7 @@
 #define MOMENTUMDECAY 0.75
 
 /* Function Prototypes */
-void forward(AffineInputs aff1Inputs);
-
-/*! \struct _learnParams_t
- *  \brief Hyper parameters for gradient descent
- *
- *  Contains all the hyper parameters for performing gradient descent. Uses a momentum based
- * approach with exponential decay of old gradient
- */
-typedef struct _learnParams_t {
-    float learningRate;  /*!< Gradient step size */
-    float momentumDecay; /*!< Gradient decay for momentum */
-    float regStrength;   /*!< Regularization strength for fully connected layers */
-} learnParams_t;
+void forward(affineInputs_t *aff1Inputs);
 
 // Error checking GPU calls
 #define gpuErrchk(ans) \
@@ -94,7 +82,7 @@ int main(int argc, char *argv[]) {
     float *dev_f1;
     gpuErrchk(cudaMalloc((float **)&dev_f1, sizeof(float) * CLASSES));
 
-    AffineInputs *aff1Inputs;
+    affineInputs_t *aff1Inputs;
     aff1Inputs->W = dev_W1;
     aff1Inputs->x = dev_x1;
     aff1Inputs->b = dev_b1;
@@ -168,7 +156,7 @@ int main(int argc, char *argv[]) {
     // Train for this many epochs
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
         // Iterate through as many minibatches as we need to complete an entire epoch
-        for (int batch = 0; batch < ceil(1.0 * yTrain->size / MINIBATCHSIZE); batch++) {
+        for (int batch = 0; batch < ceil(1.0 * dataset->yTrain->size / MINIBATCHSIZE); batch++) {
             // Sample a minibatch of samples from training data
             unsigned int minibatchSize = MINIBATCHSIZE * INPUTSIZE;
             char *minibatch = (char *)malloc(sizeof(char) * minibatchSize);
@@ -243,11 +231,11 @@ int main(int argc, char *argv[]) {
  * \param aff1Inputs Inputs for first affine layer
  * \return void
  */
-void forward(AffineInputs aff1Inputs) {
+void forward(affineInputs_t *aff1Inputs) {
     // Compute f(x)=W1*x+b1 forward pass
     dim3 blockDim(32, 32);
     // Number of threads is the size of the output matrix
-    dim3 gridDim(ceil(1.0 * aff1Inputs.batchSize / blockDim.x),
-                 ceil(1.0 * aff1Inputs.numOutputs / blockDim.y));
+    dim3 gridDim(ceil(1.0 * aff1Inputs->batchSize / blockDim.x),
+                 ceil(1.0 * aff1Inputs->numOutputs / blockDim.y));
     affineForward<<<gridDim, blockDim>>>(aff1Inputs);
 }
