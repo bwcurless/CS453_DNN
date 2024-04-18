@@ -14,8 +14,9 @@ typedef struct AffineInputs{
 	int dataSize;
 } AffineInputs;
 
-// The gradients that are output from this layer during backward pass
+// The gradients that are calculated in this layer during backward pass
 typedef struct AffineGradients{
+	float* dLdx;
 	float* dLdW;
 	float* dLdB;
 } AffineGradients;
