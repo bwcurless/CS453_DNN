@@ -1,7 +1,7 @@
 #include "softmaxLoss.cuh"
 
 __global__ void softmaxLoss(const softmaxLoss_t *inputs) {
-    // Each thread is responsible for computing one loss
+    // Each thread is responsible for computing loss for one input
     // Should be geting in numClasses x batchSize scores
     int tid_x = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -37,6 +37,10 @@ __global__ void softmaxLoss(const softmaxLoss_t *inputs) {
         for (int i = 0; i < inputs->numClasses; i++) {
             // This is actually coalesced...
             float e_f = expf(cachedScores[threadIdx.x * inputs->numClasses + i]);
+            // Cache the exponentiated score for computing gradient
+            // We no longer need the original score, so can save memory and overwrite it with the
+            // exponentiated score
+            cachedScores[threadIdx.x * inputs->numClasses + i] = e_f;
             if (i == correctClassIndex) {
                 correctClassScore = e_f;
             }
@@ -49,7 +53,21 @@ __global__ void softmaxLoss(const softmaxLoss_t *inputs) {
 
         // Each thread will reduce exponentiated score to here
         atomicAdd(inputs->loss, imageLoss);
-    }
 
-    // Compute gradient dL/df
+        // Compute gradient dL/df
+        // dL/df is the average of all images gradients, and is (numClasses x batchSize)
+        for (int i = 0; i < inputs->numClasses; i++) {
+            float dLdf_i = 0.0;
+            float softmax_i = cachedScores[threadIdx.x * inputs->numClasses + i] / e_fSum;
+            if (i == correctClassIndex) {
+                dLdf_i = -1 + softmax_i;
+            } else {
+                dLdf_i = softmax_i;
+            }
+            // Normalize, should really do this just once after entire grid finishes though
+            dLdf_i /= inputs->batchSize;
+            // Average gradient will be reduced to ohere
+            atomicAdd(&(inputs->dLdf[tid_x * inputs->numClasses + i]), dLdf_i);
+        }
+    }
 }
