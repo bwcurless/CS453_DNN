@@ -1,3 +1,5 @@
+#ifndef __PARAMS_H__
+#define __PARAMS_H__
 /*! \struct _learnParams_t
  *  \brief Hyper parameters for gradient descent
  *
@@ -9,3 +11,5 @@ typedef struct _learnParams_t {
     float momentumDecay; /*!< Gradient decay for momentum */
     float regStrength;   /*!< Regularization strength for fully connected layers */
 } learnParams_t;
+
+#endif /* ifndef __PARAMS_H__ */

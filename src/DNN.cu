@@ -15,6 +15,7 @@
 
 #include "ReLULayer.cuh"
 #include "affineLayer.cuh"
+#include "cudaHelpers.cuh"
 #include "dataset.h"
 #include "params.h"
 #include "softmaxLoss.cuh"
@@ -34,16 +35,6 @@
 
 /* Function Prototypes */
 void forward(affineInputs_t *aff1Inputs);
-
-// Error checking GPU calls
-#define gpuErrchk(ans) \
-    { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true) {
-    if (code != cudaSuccess) {
-        fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) exit(code);
-    }
-}
 
 using namespace std;
 
@@ -171,13 +162,12 @@ int main(int argc, char *argv[]) {
             // Run forward and backward passes on minibatch of data, and update the gradient
 
             forward(aff1Inputs);
+            // ReLU next
+            // Another Affine layer
 
             // This layer computes the loss and the gradient of the loss with respect to the scores
             // input to this layer
-            dim3 blockDim(32, 32);
-            // Number of threads is the size of the output matrix of scores
-            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            softmaxLoss<<<gridDim, blockDim>>>(softmaxInputs);
+            softmaxLoss(softmaxInputs);
 
             // At this point we will have the loss computed for every input image, and the gradient
             // of our softmax function. We now begin to backpropogate the gradients

@@ -20,6 +20,6 @@ typedef struct _softmaxLoss_t {
  * \param  inputs Struct required to compute the softmax loss
  * \return void
  */
-__global__ void softmaxLoss(const softmaxLoss_t* inputs);
+void softmaxLoss(const softmaxLoss_t* inputs);
 
 #endif /* ifndef __SOFTMAX_H__ */
