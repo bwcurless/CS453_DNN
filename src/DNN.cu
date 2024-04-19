@@ -90,9 +90,14 @@ int main(int argc, char *argv[]) {
     float *dev_dLdb1;
     gpuErrchk(cudaMalloc((float **)&dev_dLdb1, sizeof(float) * CLASSES));
 
+    // dL/dx1. How much the inputs effect the loss
+    float *dev_dLdx1;
+    gpuErrchk(cudaMalloc((float **)&dev_dLdx1, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
+
     AffineGradients *aff1Grads;
     aff1Grads->dLdB = dev_dLdb1;
     aff1Grads->dLdW = dev_dLdW1;
+    aff1Grads->dLdx = dev_dLdx1;
 
     // The expected classes of the minibatch, used to train the model
     float *dev_y;
