@@ -22,4 +22,15 @@ typedef struct _softmaxLoss_t {
  */
 void softmaxLoss(const softmaxLoss_t* inputs);
 
+/*! \brief Initialize softmax laye
+ *
+ *  Allocate space on GPU, creates data structure for computing softmax loss.
+ *
+ * \param numClasses Number of classes to compute loss over
+ * \param batchSize Number of samples per batch
+ * \param f Input scores, previously allocated
+ * \return Data structure
+ */
+softmaxLoss_t* softmaxInit(unsigned int numClasses, unsigned int batchSize, float* f);
+
 #endif /* ifndef __SOFTMAX_H__ */

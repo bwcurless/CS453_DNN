@@ -4,6 +4,30 @@
 __global__ void normalizeSoftmaxLossGrad(const softmaxLoss_t *inputs);
 __global__ void softmaxLossUnnormalized(const softmaxLoss_t *inputs);
 
+softmaxLoss_t *softmaxInit(unsigned int numClasses, unsigned int batchSize, float *f) {
+    // The expected classes of the minibatch, used to train the model
+    float *dev_y;
+    gpuErrchk(cudaMalloc((float **)&dev_y, sizeof(float) * batchSize));
+
+    // Softmax loss
+    float *dev_softmax_loss;
+    gpuErrchk(cudaMalloc((float **)&dev_softmax_loss, sizeof(float)));
+
+    // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
+    float *dev_dLdf;
+    gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * numClasses));
+
+    // I guess this can leak, but don't feel like dealing with it now
+    softmaxLoss_t *softmaxInputs = (softmaxLoss_t *)malloc(sizeof(softmaxLoss_t));
+    softmaxInputs->loss = dev_softmax_loss;
+    softmaxInputs->dLdf = dev_dLdf;
+    softmaxInputs->f = f;
+    softmaxInputs->numClasses = numClasses;
+    softmaxInputs->batchSize = batchSize;
+
+    return softmaxInputs;
+}
+
 void softmaxLoss(const softmaxLoss_t *inputs) {
     dim3 blockDim(128);
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x));

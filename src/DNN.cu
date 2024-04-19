@@ -99,24 +99,8 @@ int main(int argc, char *argv[]) {
     aff1Grads->dLdW = dev_dLdW1;
     aff1Grads->dLdx = dev_dLdx1;
 
-    // The expected classes of the minibatch, used to train the model
-    float *dev_y;
-    gpuErrchk(cudaMalloc((float **)&dev_y, sizeof(float) * MINIBATCHSIZE));
-
-    // Softmax loss
-    float *dev_softmax_loss;
-    gpuErrchk(cudaMalloc((float **)&dev_softmax_loss, sizeof(float)));
-
-    // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
-    float *dev_dLdf;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * CLASSES));
-
-    softmaxLoss_t *softmaxInputs;
-    softmaxInputs->loss = dev_softmax_loss;
-    softmaxInputs->dLdf = dev_dLdf;
-    softmaxInputs->f = dev_f1;
-    softmaxInputs->numClasses = CLASSES;
-    softmaxInputs->batchSize = MINIBATCHSIZE;
+    // Allocates memory on device for softmax layer
+    softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, dev_f1);
 
     // ****** Initialize Model Parameters *********
 

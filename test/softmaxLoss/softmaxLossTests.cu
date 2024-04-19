@@ -33,26 +33,7 @@ int main(int argc, char *argv[]) {
     float *dev_f1;
     gpuErrchk(cudaMalloc((float **)&dev_f1, sizeof(float) * CLASSES));
 
-    // The expected classes of the minibatch, used to train the model
-    float *dev_y;
-    gpuErrchk(cudaMalloc((float **)&dev_y, sizeof(float) * MINIBATCHSIZE));
-
-    // Softmax loss
-    float *dev_softmax_loss;
-    gpuErrchk(cudaMalloc((float **)&dev_softmax_loss, sizeof(float)));
-
-    // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
-    float *dev_dLdf;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * CLASSES));
-
-    softmaxLoss_t *softmaxInputs;
-    softmaxInputs->loss = dev_softmax_loss;
-    softmaxInputs->dLdf = dev_dLdf;
-    softmaxInputs->f = dev_f1;
-    softmaxInputs->numClasses = CLASSES;
-    softmaxInputs->batchSize = MINIBATCHSIZE;
-
-    // ****** Initialize Model Parameters *********
+    softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, dev_f1);
 
     // Set scores to small values, gaussian distribution, 0 mean
     float scale = 1.0;
@@ -73,8 +54,6 @@ int main(int argc, char *argv[]) {
 
     // execute kernel
     softmaxLoss(softmaxInputs);
-
-    // end execute kernel
 
     double tend = omp_get_wtime();
 
