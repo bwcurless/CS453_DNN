@@ -10,10 +10,10 @@ typedef struct _reluInputs {
 
 // outputs are max(0, input). Essentially we threshold everything negative to 0, and we pass
 // everything > 0 straight through unaltered.
-__global__ void reluForward(reluInput_t *inputs);
+void reluForward(reluInput_t *inputs);
 
 // gradientsOut is 1 * upstreamGradients if the input for that gradient was > 0, and gradient is 0
 // if the input for that gradient was <= 0.
-__global__ void reluBackward(float *upstreamGradients, reluInput_t *inputs, float *gradientsOut);
+void reluBackward(float *upstreamGradients, reluInput_t *inputs, float *gradientsOut);
 
 #endif /* ifndef __RELULAYER_H__ */
