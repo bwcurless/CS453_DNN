@@ -20,7 +20,7 @@ typedef struct _softmaxLoss_t {
  * \param  inputs Struct required to compute the softmax loss
  * \return void
  */
-void softmaxLoss(const softmaxLoss_t* inputs);
+void softmaxLoss(softmaxLoss_t* inputs);
 
 /*! \brief Initialize softmax laye
  *

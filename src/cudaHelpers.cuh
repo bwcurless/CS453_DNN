@@ -1,6 +1,8 @@
 #ifndef __CUDAHELPERS_H__
 #define __CUDAHELPERS_H__
 
+#include <stdio.h>
+
 // Error checking GPU calls
 #define gpuErrchk(ans) \
     { gpuAssert((ans), __FILE__, __LINE__); }
