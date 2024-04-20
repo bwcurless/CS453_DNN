@@ -5,23 +5,33 @@
 
 #include "params.h"
 
-// The inputs required for the forward pass
+// The data required to compute an affine layer
 typedef struct AffineInputs {
     float* W;
     float* x;
     float* b;
     float* f;
+    float* dLdx;
+    float* dLdW;
+    float* dLdB;
     int numOutputs;
     int batchSize;
     int dataSize;
 } affineInputs_t;
 
-// The gradients that are calculated in this layer during backward pass
-typedef struct AffineGradients {
-    float* dLdx;
-    float* dLdW;
-    float* dLdB;
-} affineGradients_t;
+/*! \brief Initialize an affine layer
+ *
+ *  Allocate memory on device for this layer. You will need to deallocate the host and device memory
+ * when you are done using this layer. Creates the data structure needed to use the affine layer.
+ *
+ * \param numOutputs Output size of this layer for a single input
+ * \param batchSize The number of inputs in a batch
+ * \param inputDataSize The length of a single input vector
+ * \param x A minibatch of input data
+ * \return affineInputs Passed to other layers
+ */
+affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
+                           unsigned int inputDataSize, float* x);
 
 /*! \brief Computes forward pass of Affine Layer
  *
@@ -31,22 +41,20 @@ typedef struct AffineGradients {
  * \param  The inputs required to compute the forward pass of an affine layer.
  * \return void
  */
-__global__ void affineForward(const affineInputs_t* inputs);
+void affineForward(const affineInputs_t* inputs);
 
 /*! \brief Computes backward pass of Affine Layer
  *
  *  Takes in cached values from forward pass, the upstream gradient, and computes the gradients of
  * the loss with respect to the inputs.
  *
- * \param upstreamGradient The upstream gradient of loss with respect to the output of this layer,
- * f. \param inputs The cached values used to compute the forward pass of this layer. \param
- * gradients The gradients that this backward pass computes will be stored here. \return void
+ * \param upstreamGradient Upstream gradient of loss with respect to the output of this layer, f.
+ * \param inputs The cached values used to compute the forward pass of this layer.
+ * \return void
  */
-__global__ void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs,
-                               const affineGradients_t* gradients);
+void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs);
 
 // Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
-__global__ void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs,
-                             const affineGradients_t* gradients);
+void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs);
 
 #endif /* ifndef __AFFINELAYER_H__ */

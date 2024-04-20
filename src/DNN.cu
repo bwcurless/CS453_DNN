@@ -58,49 +58,16 @@ int main(int argc, char *argv[]) {
 
     // Allocate memory for all intermediate steps on the GPU. This includes caching inputs to
     // each layer, outputs, and gradients used for backpropagation Input layer
-    float *dev_x1;
-    gpuErrchk(cudaMalloc((float **)&dev_x1, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
 
-    // W1. The weight matrix we are trying to find
-    float *dev_W1;
-    gpuErrchk(cudaMalloc((float **)&dev_W1, sizeof(float) * CLASSES * INPUTSIZE));
+    // Input layer
+    float *dev_x;
+    gpuErrchk(cudaMalloc((float **)&dev_x, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
 
-    // b1. The biases for each output of the linear classifier. The +b term
-    float *dev_b1;
-    gpuErrchk(cudaMalloc((float **)&dev_b1, sizeof(float) * CLASSES));
+    // First affine layer
+    affineInputs_t *aff1Inputs = affineInit(CLASSES, MINIBATCHSIZE, INPUTSIZE, dev_x);
 
-    // Intermediate Scores f(x). The linear classifier's predicted scores f(x)=W*x+b
-    float *dev_f1;
-    gpuErrchk(cudaMalloc((float **)&dev_f1, sizeof(float) * CLASSES));
-
-    affineInputs_t *aff1Inputs;
-    aff1Inputs->W = dev_W1;
-    aff1Inputs->x = dev_x1;
-    aff1Inputs->b = dev_b1;
-    aff1Inputs->f = dev_f1;
-    aff1Inputs->batchSize = MINIBATCHSIZE;
-    aff1Inputs->dataSize = INPUTSIZE;
-    aff1Inputs->numOutputs = CLASSES;
-
-    // dL/dW1. How much the weights effect the loss
-    float *dev_dLdW1;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdW1, sizeof(float) * CLASSES * INPUTSIZE));
-
-    // dL/db1. How much the biases effect the loss
-    float *dev_dLdb1;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdb1, sizeof(float) * CLASSES));
-
-    // dL/dx1. How much the inputs effect the loss
-    float *dev_dLdx1;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdx1, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
-
-    AffineGradients *aff1Grads;
-    aff1Grads->dLdB = dev_dLdb1;
-    aff1Grads->dLdW = dev_dLdW1;
-    aff1Grads->dLdx = dev_dLdx1;
-
-    // Allocates memory on device for softmax layer
-    softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, dev_f1);
+    // Softmax loss layer
+    softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, aff1Inputs->f);
 
     // ****** Initialize Model Parameters *********
 
@@ -115,7 +82,7 @@ int main(int argc, char *argv[]) {
         host_W1[i] = distribution(generator);
     }
     // Copy W1 to device
-    gpuErrchk(cudaMemcpy(dev_W1, host_W1, W1Size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(aff1Inputs->W, host_W1, W1Size, cudaMemcpyHostToDevice));
 
     // b1 needs to be set to 0 for no offsets at first
     int b1Size = sizeof(float) * CLASSES;
@@ -124,7 +91,7 @@ int main(int argc, char *argv[]) {
         host_b1[i] = 0.0;
     }
     // Copy b1 to device
-    gpuErrchk(cudaMemcpy(dev_b1, host_b1, b1Size, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(aff1Inputs->b, host_b1, b1Size, cudaMemcpyHostToDevice));
 
     // ******** Start of Optimization ************
 
@@ -145,8 +112,8 @@ int main(int argc, char *argv[]) {
             // we are onto the next epoch
 
             // Push minibatch to GPU. Push images and expected classes
-            gpuErrchk(cudaMemcpy(dev_x1, minibatch, sizeof(char) * minibatchSize,
-                                 cudaMemcpyHostToDevice));
+            gpuErrchk(
+                cudaMemcpy(dev_x, minibatch, sizeof(char) * minibatchSize, cudaMemcpyHostToDevice));
 
             // Run forward and backward passes on minibatch of data, and update the gradient
 
@@ -163,21 +130,17 @@ int main(int argc, char *argv[]) {
 
             // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given the
             // upstream gradients and the last inputs
-            dim3 blockDim(32, 32);
-            // Number of threads is the size of the output matrix
-            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            affineBackward<<<gridDim, blockDim>>>(dev_dLdf, aff1Inputs, aff1Grads);
+            affineBackward(softmaxInputs->dLdf, aff1Inputs);
 
             // Using our learning rate, update our parameters based on the gradient
 
             // Update Affine1 layer weights
-            dim3 blockDim(32, 32);
-            dim3 gridDim(ceil(1.0 * MINIBATCHSIZE / blockDim.x), ceil(1.0 * CLASSES / blockDim.y));
-            affineUpdate<<<gridDim, blockDim>>>(learnParameters, aff1Inputs, aff1Grads);
+            affineUpdate(learnParameters, aff1Inputs);
 
             // Print out the loss for debugging
             float loss;
-            gpuErrchk(cudaMemcpy(&loss, dev_softmax_loss, sizeof(float), cudaMemcpyDeviceToHost));
+            gpuErrchk(
+                cudaMemcpy(&loss, softmaxInputs->loss, sizeof(float), cudaMemcpyDeviceToHost));
             printf("\nSoftmax Loss: %f", loss);
         }
     }
@@ -212,9 +175,5 @@ int main(int argc, char *argv[]) {
  */
 void forward(affineInputs_t *aff1Inputs) {
     // Compute f(x)=W1*x+b1 forward pass
-    dim3 blockDim(32, 32);
-    // Number of threads is the size of the output matrix
-    dim3 gridDim(ceil(1.0 * aff1Inputs->batchSize / blockDim.x),
-                 ceil(1.0 * aff1Inputs->numOutputs / blockDim.y));
-    affineForward<<<gridDim, blockDim>>>(aff1Inputs);
+    affineForward(aff1Inputs);
 }

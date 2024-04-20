@@ -24,7 +24,9 @@ void softmaxLoss(softmaxLoss_t* inputs);
 
 /*! \brief Initialize softmax laye
  *
- *  Allocate space on GPU, creates data structure for computing softmax loss.
+ *  Allocate space on GPU, creates data structure for computing softmax loss. You will need to
+ * deallocate the memory allocated in host code as well as the device memory when you are done using
+ * this layer.
  *
  * \param numClasses Number of classes to compute loss over
  * \param batchSize Number of samples per batch
