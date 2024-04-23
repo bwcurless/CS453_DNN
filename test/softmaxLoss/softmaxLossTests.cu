@@ -12,7 +12,7 @@
 #include "../../src/cudaHelpers.cuh"
 #include "../../src/softmaxLoss.cuh"
 
-#define MINIBATCHSIZE 1000
+#define MINIBATCHSIZE 5
 #define CLASSES 10
 
 using namespace std;
@@ -55,12 +55,7 @@ int main(int argc, char *argv[]) {
     size_t ySize = sizeof(unsigned int) * MINIBATCHSIZE;
     unsigned int *host_y = (unsigned int *)malloc(ySize);
     for (int i = 0; i < MINIBATCHSIZE; i++) {
-        // host_y[i] = i % 10;  // This provides 0 gradient, essentially we guessed in such a
-        //  way that the gradients cancel out across the board. I think a similar thing would happen
-        //  if we initialized all the weights of our matrix to 0, or to a constant value I think.
-        //  Essentially if there is no asymmetry to a minibatch you'll get no gradient since all the
-        //  gradients will average out to be 0 across the batch.
-        host_y[i] = 1;
+        host_y[i] = i % 10;
     }
     gpuErrchk(cudaMemcpy(softmaxInputs->y, host_y, ySize, cudaMemcpyHostToDevice));
 
@@ -79,11 +74,11 @@ int main(int argc, char *argv[]) {
 
     // Copy gradient off GPU
     float *host_gradient;
-    host_gradient = (float *)malloc(sizeof(float) * CLASSES);
-    gpuErrchk(cudaMemcpy(host_gradient, softmaxInputs->dLdf, sizeof(float) * CLASSES,
-                         cudaMemcpyDeviceToHost));
+    host_gradient = (float *)malloc(sizeof(float) * CLASSES * MINIBATCHSIZE);
+    gpuErrchk(cudaMemcpy(host_gradient, softmaxInputs->dLdf,
+                         sizeof(float) * CLASSES * MINIBATCHSIZE, cudaMemcpyDeviceToHost));
     printf("dL/df: \n");
-    printMatrix(host_gradient, 1, CLASSES);
+    printMatrix(host_gradient, MINIBATCHSIZE, CLASSES);
 
     printf("\nTotal time GPU (s): %f", tend - tstart);
 

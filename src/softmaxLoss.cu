@@ -15,7 +15,7 @@ softmaxLoss_t *softmaxInit(unsigned int numClasses, unsigned int batchSize, floa
 
     // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
     float *dev_dLdf;
-    gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * numClasses));
+    gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * numClasses * batchSize));
 
     // I guess this can leak, but don't feel like dealing with it now
     softmaxLoss_t *softmaxInputs = (softmaxLoss_t *)malloc(sizeof(softmaxLoss_t));
@@ -52,9 +52,6 @@ __global__ void normalizeSoftmaxLossGrad(const softmaxLoss_t inputs) {
     int tid_x = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid_x == 0) {
         *inputs.loss /= inputs.batchSize;
-    }
-    if (tid_x < inputs.numClasses) {
-        inputs.dLdf[tid_x] /= inputs.batchSize;
     }
 }
 
@@ -110,7 +107,6 @@ __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs) {
             }
             e_fSum += e_f;
         }
-        // This comes out to be about 2.75 when I do my tests, likely due to numerical inaccuracy.
         imageLoss = -logf(correctClassScore / e_fSum);
 
         // Each thread will reduce exponentiated score to here
@@ -126,8 +122,12 @@ __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs) {
             } else {
                 dLdf_i = softmax_i;
             }
-            // Reduce gradients to single value
-            atomicAdd(&(inputs.dLdf[i]), dLdf_i);
+            // Store gradients back out
+            // tid_x is which column of the output this thread is responsible for
+            // batchSize * i gets you to the correct row
+            // Don't forget to normalize by number of inputs because the loss function is averaged
+            // out over all batch samples
+            inputs.dLdf[inputs.batchSize * i + tid_x] = dLdf_i / inputs.batchSize;
         }
     }
 }
