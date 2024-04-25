@@ -41,22 +41,6 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
  * \param  The inputs required to compute the forward pass of an affine layer.
  * \return void
  */
-void affineForward(const affineInputs_t* inputs);
-
-/*! \brief Computes backward pass of Affine Layer
- *
- *  Takes in cached values from forward pass, the upstream gradient, and computes the gradients of
- * the loss with respect to the inputs.
- *
- * \param upstreamGradient Upstream gradient of loss with respect to the output of this layer, f.
- * \param inputs The cached values used to compute the forward pass of this layer.
- * \return void
- */
-void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs);
-
-// Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
-void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs);
-
 void affineForward(const affineInputs_t* inputs)
 {
  unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
@@ -75,6 +59,21 @@ void affineForward(const affineInputs_t* inputs)
 
  return;
 }
+
+/*! \brief Computes backward pass of Affine Layer
+ *
+ *  Takes in cached values from forward pass, the upstream gradient, and computes the gradients of
+ * the loss with respect to the inputs.
+ *
+ * \param upstreamGradient Upstream gradient of loss with respect to the output of this layer, f.
+ * \param inputs The cached values used to compute the forward pass of this layer.
+ * \return void
+ */
+void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs);
+
+// Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
+void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs);
+
 
 // 
 
