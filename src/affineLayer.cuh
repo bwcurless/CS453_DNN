@@ -57,4 +57,25 @@ void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs)
 // Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
 void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs);
 
+void affineForward(const affineInputs_t* inputs)
+{
+ unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
+ unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
+ unsigned int localSum = 0;
+
+ if (COL < inputs->dataSize && ROW < inputs->numOutputs)
+ {
+  for (unsigned int index = 0; index < inputs->dataSize; index++)
+   {
+    localSum += inputs->x[inputs->batchSize * index + COL] * inputs->W[ROW * inputs->dataSize + index];
+   }
+ }
+
+ inputs->f[ROW * inputs->batchSize + COL];
+
+ return;
+}
+
+// 
+
 #endif /* ifndef __AFFINELAYER_H__ */
