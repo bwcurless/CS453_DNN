@@ -3,7 +3,7 @@
 
 // Prototypes for kernel and other private functions. Feel free to change them and their signatures
 __global__ void affineForwardKernel(affineInputs_t inputs);
-__global__ void affineBackwardKernel(float* dLdf, affineInputs_t aff1Inputs);
+__global__ void affineBackwardKernel(float* dLdf, affineInputs_t inputs);
 __global__ void affineUpdateKernel(learnParams_t hyperParams, affineInputs_t inputs);
 
 // Host code will call these functions, and they will launch the kernels
@@ -58,21 +58,36 @@ void affineForward(const affineInputs_t* inputs) {
     affineForwardKernel<<<gridDim, blockDim>>>(*inputs);
 }
 
-void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs,
-                    const affineGradients_t* gradients) {
+void affineBackward(float* upstreamGradient, const affineInputs_t* inputs) {
     dim3 blockDim(32, 32);
     // Number of threads is the size of the output matrix
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
                  ceil(1.0 * inputs->numOutputs / blockDim.y));
-    affineBackwardKernel<<<gridDim, blockDim>>>(dev_dLdf, *aff1Inputs, *aff1Grads);
+    affineBackwardKernel<<<gridDim, blockDim>>>(upstreamGradient, *inputs);
 }
 
-void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs,
-                  const affineGradients_t* gradients) {
+void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs) {
     dim3 blockDim(32, 32);
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
                  ceil(1.0 * inputs->numOutputs / blockDim.y));
-    affineUpdateKernel<<<gridDim, blockDim>>>(learnParameters, *aff1Inputs, *aff1Grads);
+    affineUpdateKernel<<<gridDim, blockDim>>>(*hyperParams, *inputs);
+}
+
+__global__ void affineForwardKernel(affineInputs_t inputs) {
+    unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
+    unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
+    unsigned int localSum = 0;
+
+    if (COL < inputs.dataSize && ROW < inputs.numOutputs) {
+        for (unsigned int index = 0; index < inputs.dataSize; index++) {
+            localSum +=
+                inputs.x[inputs.batchSize * index + COL] * inputs.W[ROW * inputs.dataSize + index];
+        }
+    }
+
+    inputs.f[ROW * inputs.batchSize + COL];
+
+    return;
 }
 
 // This could be good code to use as a starting point for creating the rectangular matrix
@@ -83,36 +98,36 @@ void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs
 // uses shared memory to tile the computation to eliminate extra accesses to
 // global memory
 // This is my own test for fun taking the original tiled MM and making it's accesses coalesced
-__global__ void affineForwardKernel(float* A, float* B, float* C, const unsigned int NUMELEM) {
-    // Copy code from in-class activity
-
-    unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
-    unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
-
-    __shared__ float tileA[BLOCKDIMTILE][BLOCKDIMTILE];
-    __shared__ float tileB[BLOCKDIMTILE][BLOCKDIMTILE];
-
-    float localSum = 0;
-
-    for (int phase = 0; phase < NUMELEM; phase += BLOCKDIMTILE) {
-        // Both accesses are coalesced here
-        tileA[threadIdx.y][threadIdx.x] = A[ROW * NUMELEM + phase + threadIdx.x];
-        tileB[threadIdx.y][threadIdx.x] = B[(phase + threadIdx.y) * NUMELEM + COL];
-
-        __syncthreads();
-
-        for (int k = 0; k < BLOCKDIMTILE; k++) {
-            // The first access is broadcase since all threads when blockdimtile is 32 have same
-            // y, and k THe second access is spread out across banks since constant k, and
-            // increasing x
-            localSum += tileA[threadIdx.y][k] * tileB[k][threadIdx.x];
-        }
-
-        __syncthreads();
-    }
-
-    // This one is coalesced as well
-    C[ROW * NUMELEM + COL] = localSum;
-
-    return;
-}
+//__global__ void affineForwardKernel(float* A, float* B, float* C, const unsigned int NUMELEM) {
+//    // Copy code from in-class activity
+//
+//    unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
+//    unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
+//
+//    __shared__ float tileA[BLOCKDIMTILE][BLOCKDIMTILE];
+//    __shared__ float tileB[BLOCKDIMTILE][BLOCKDIMTILE];
+//
+//    float localSum = 0;
+//
+//    for (int phase = 0; phase < NUMELEM; phase += BLOCKDIMTILE) {
+//        // Both accesses are coalesced here
+//        tileA[threadIdx.y][threadIdx.x] = A[ROW * NUMELEM + phase + threadIdx.x];
+//        tileB[threadIdx.y][threadIdx.x] = B[(phase + threadIdx.y) * NUMELEM + COL];
+//
+//        __syncthreads();
+//
+//        for (int k = 0; k < BLOCKDIMTILE; k++) {
+//            // The first access is broadcase since all threads when blockdimtile is 32 have same
+//            // y, and k THe second access is spread out across banks since constant k, and
+//            // increasing x
+//            localSum += tileA[threadIdx.y][k] * tileB[k][threadIdx.x];
+//        }
+//
+//        __syncthreads();
+//    }
+//
+//    // This one is coalesced as well
+//    C[ROW * NUMELEM + COL] = localSum;
+//
+//    return;
+//}
