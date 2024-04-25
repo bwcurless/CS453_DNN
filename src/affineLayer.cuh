@@ -74,4 +74,7 @@ void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs)
 // Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
 void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs);
 
+
+// 
+
 #endif /* ifndef __AFFINELAYER_H__ */
