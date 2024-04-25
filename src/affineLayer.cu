@@ -51,10 +51,10 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
 }
 
 void affineForward(const affineInputs_t* inputs) {
-    dim3 blockDim(32, 32);
+    dim3 blockDim(32, inputs->numOutputs);
     // Number of threads is the size of the output matrix
-    dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
-                 ceil(1.0 * inputs->numOutputs / blockDim.y));
+    dim3 gridDim(ceil(1.0 * inputs->dataSize / blockDim.x),
+                 ceil(1.0 * inputs->batchSize / blockDim.y));
     affineForwardKernel<<<gridDim, blockDim>>>(*inputs);
 }
 
