@@ -6,18 +6,52 @@ source ../../slurm_funcs.sh
 # Exit if any part fails
 set -e
 
-jobName=$1
-outputFile="softmaxLossTest"
+# Input arguments
+target=$1
+jobName=$2
 
 # Add a dash on if we are customizing the filename
 if [[ -n $jobName ]]; then
 	jobPrefix=$jobName-
 fi
 
+outputFile="softmaxLossTests"
+
+# Determine what target to build and run on
+case $target in
+	a100)
+		echo "Running on a100"
+		CC=80
+		cudaModule=12.3.2
+		gpu=a100
+		;;
+
+	v100)
+		echo "Running on v100"
+		CC=70
+		cudaModule=12.3.2
+		gpu=v100
+		;;
+
+	p100)
+		echo "Running on p100"
+		CC=60
+		cudaModule=12.3.2
+		gpu=p100
+		;;
+
+	k80 | *)
+		echo "Default mode k80"
+		CC=37
+		cudaModule=11.7 # k80's only run on this
+		gpu=k80
+		;;
+esac
+
 # Do a test build locally to make sure there aren't errors before waiting in queue
 echo "Building executable to $outputFile"
-module load "cuda/12.3.2"
-nvcc -O3 -arch=compute_80 -code=sm_80 -lcuda -Xcompiler -fopenmp -lineinfo -Xcompiler -rdynamic softmaxLossTests.cu ../../src/softmaxLoss.cu -link -o "$outputFile"
+module load "cuda/$cudaModule"
+nvcc -O3 -arch=compute_$CC -code=sm_$CC -lcuda -Xcompiler -fopenmp -lineinfo -Xcompiler -rdynamic softmaxLossTests.cu ../../src/softmaxLoss.cu -link -o "$outputFile"
 
 # Define where outputs go
 outputPath="/scratch/bc2497/"
@@ -36,14 +70,14 @@ jobid=$(sbatch --parsable <<SHELL
 #SBATCH --time=03:00:00
 #SBATCH --mem=10000         #memory requested in MiB
 #SBATCH -G 1 #resource requirement (1 GPU)
-#SBATCH -C a100 #GPU Model: k80, p100, v100, a100
+#SBATCH -C $gpu #GPU Model: k80, p100, v100, a100
 #SBATCH --account=cs453-spr24
 
 # Code will not compile if we don't load the module
 module load "cuda/$cudaModule"
 
 # Can do arithmetic interpolation inside of $(( )). Need to escape properly
-nvcc -O3 -arch=compute_80 -code=sm_80 -lcuda -lineinfo -Xcompiler -fopenmp -Xcompiler -rdynamic softmaxLossTests.cu ../../src/softmaxLoss.cu -link -o "$outputFile"
+nvcc -O3 -arch=compute_$CC -code=sm_$CC -lcuda -lineinfo -Xcompiler -fopenmp -Xcompiler -rdynamic softmaxLossTests.cu ../../src/softmaxLoss.cu -link -o "$outputFile"
 
 srun "./$outputFile"
 #compute-sanitizer --tool=memcheck "./$outputFile"
