@@ -58,6 +58,7 @@ void affineForward(const affineInputs_t* inputs) {
     affineForwardKernel<<<gridDim, blockDim>>>(*inputs);
 }
 
+/*
 void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs,
                     const affineGradients_t* gradients) {
     dim3 blockDim(32, 32);
@@ -74,7 +75,7 @@ void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs
                  ceil(1.0 * inputs->numOutputs / blockDim.y));
     affineUpdateKernel<<<gridDim, blockDim>>>(learnParameters, *aff1Inputs, *aff1Grads);
 }
-
+*/
 // This could be good code to use as a starting point for creating the rectangular matrix
 // multiply It could become the affineForward kernel
 
