@@ -13,7 +13,7 @@
 #include "../../src/cudaHelpers.cuh"
 
 #define INPUTSIZE 10
-#define NUMOUTPUTS 15
+#define NUMOUTPUTS 7
 #define MINIBATCHSIZE 5
 
 using namespace std;
@@ -36,13 +36,33 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < NUMOUTPUTS * INPUTSIZE; i++) {
         host_W[i] = i;
     }
+    printf("W:\n");
+    printMatrix(host_W, INPUTSIZE, NUMOUTPUTS);
 
     // Init input values
     size_t inputDataSize = sizeof(float) * INPUTSIZE * MINIBATCHSIZE;
     float *host_inputData = (float *)malloc(inputDataSize);
     for (int i = 0; i < INPUTSIZE * MINIBATCHSIZE; i++) {
-        host_inputData[i] = 0.25;
+        host_inputData[i] = i;
     }
+    printf("x:\n");
+    printMatrix(host_inputData, MINIBATCHSIZE, INPUTSIZE);
+
+    // Init upstream gradient
+    int fSize = sizeof(float) * NUMOUTPUTS * MINIBATCHSIZE;
+    float *host_dLdf = (float *)malloc(fSize);
+    // Init to pseudo identity matrix to make checking easier
+    for (int row = 0; row < NUMOUTPUTS; row++) {
+        for (int col = 0; col < MINIBATCHSIZE; col++) {
+            if (row == col) {
+                host_dLdf[row * MINIBATCHSIZE + col] = 1;
+            } else {
+                host_dLdf[row * MINIBATCHSIZE + col] = 0;
+            }
+        }
+    }
+    printf("dLdf:\n");
+    printMatrix(host_dLdf, MINIBATCHSIZE, NUMOUTPUTS);
 
     // Make space for input data on GPU
     // This comes from previous layer, so it won't be allocated with the rest of the other layer
@@ -53,9 +73,16 @@ int main(int argc, char *argv[]) {
     // Allocate GPU space for rest of affine layer
     affineInputs_t *affineInputs = affineInit(NUMOUTPUTS, MINIBATCHSIZE, INPUTSIZE, dev_inputData);
 
+    // Make space for upstream gradients on GPU
+    // This comes from previous layer, so it won't be allocated with the rest of the other layer
+    // data
+    float *dev_upstreamGradients;
+    gpuErrchk(cudaMalloc((float **)&dev_upstreamGradients, fSize));
+
     // Push initial data to GPU, x and W
     gpuErrchk(cudaMemcpy(affineInputs->W, host_W, WSize, cudaMemcpyHostToDevice));
     gpuErrchk(cudaMemcpy(affineInputs->x, host_inputData, inputDataSize, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dev_upstreamGradients, host_dLdf, fSize, cudaMemcpyHostToDevice));
 
     double tstart = omp_get_wtime();
 
@@ -63,6 +90,13 @@ int main(int argc, char *argv[]) {
     affineForward(affineInputs);
 
     double tend = omp_get_wtime();
+
+    double tstartBackward = omp_get_wtime();
+
+    // execute kernel
+    affineBackward(dev_upstreamGradients, affineInputs);
+
+    double tendBackward = omp_get_wtime();
 
     // Copy outputs off GPU
     // I'll leave this up to you Evan
@@ -73,6 +107,27 @@ int main(int argc, char *argv[]) {
     //                     sizeof(float) * NUMOUTPUTS * MINIBATCHSIZE, cudaMemcpyDeviceToHost));
     // printf("dL/df: \n");
     // printMatrix(host_gradient, MINIBATCHSIZE, NUMOUTPUTS);
+
+    // Copy Gradients outputs off GPU
+    float *host_dLdW;
+    host_dLdW = (float *)malloc(WSize);
+    gpuErrchk(cudaMemcpy(host_dLdW, affineInputs->dLdW, WSize, cudaMemcpyDeviceToHost));
+    printf("dLdW:\n");
+    printMatrix(host_dLdW, INPUTSIZE, NUMOUTPUTS);
+
+    float *host_dLdx;
+    size_t xSize = sizeof(float) * MINIBATCHSIZE * INPUTSIZE;
+    host_dLdx = (float *)malloc(xSize);
+    gpuErrchk(cudaMemcpy(host_dLdx, affineInputs->dLdx, xSize, cudaMemcpyDeviceToHost));
+    printf("dLdx:\n");
+    printMatrix(host_dLdx, MINIBATCHSIZE, INPUTSIZE);
+
+    float *host_dLdb;
+    size_t bSize = sizeof(float) * NUMOUTPUTS;
+    host_dLdb = (float *)malloc(bSize);
+    gpuErrchk(cudaMemcpy(host_dLdb, affineInputs->dLdB, bSize, cudaMemcpyDeviceToHost));
+    printf("dLdb:\n");
+    printMatrix(host_dLdb, 1, NUMOUTPUTS);
 
     printf("\nTotal time GPU (s): %f", tend - tstart);
 
