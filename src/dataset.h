@@ -2,14 +2,20 @@
 #ifndef __DATASET_H__
 #define __DATASET_H__
 #include <vector>
+#include <string>
+#include <iostream>
+#include <fstream>
+
+#define ELEM 10000
+#define DIM 1024
 
 using namespace std;
 
 typedef struct _data {
-    vector<vector<char> > *xTrain;
-    vector<char> *yTrain;
-    vector<vector<char> > *xVal;
-    vector<char> *yVal;
+    float xTrain[DIM * ELEM * 3];
+    vector<uint8_t> yTrain;
+    float xVal[DIM * ELEM * 3];
+    vector<uint8_t> yVal;
 } data_t;
 
 /*! \brief Import Dataset from file
