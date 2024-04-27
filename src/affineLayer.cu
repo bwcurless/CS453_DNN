@@ -3,7 +3,10 @@
 
 // Prototypes for kernel and other private functions. Feel free to change them and their signatures
 __global__ void affineForwardKernel(affineInputs_t inputs);
-__global__ void affineBackwardKernel(float* dLdf, affineInputs_t aff1Inputs);
+
+__global__ void dxKernel(const float* dLdf, affineInputs_t inputs);
+__global__ void dWdbKernel(const float* dLdf, affineInputs_t inputs);
+
 __global__ void affineUpdateKernel(learnParams_t hyperParams, affineInputs_t inputs);
 
 // Host code will call these functions, and they will launch the kernels
@@ -21,7 +24,7 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
 
     // Intermediate Scores f(x). The linear classifier's predicted scores f(x)=W*x+b
     float* dev_f;
-    gpuErrchk(cudaMalloc((float**)&dev_f, sizeof(float) * numOutputs));
+    gpuErrchk(cudaMalloc((float**)&dev_f, sizeof(float) * numOutputs * batchSize));
 
     // dL/dW1. How much the weights effect the loss
     float* dev_dLdW;
@@ -53,29 +56,109 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
 void affineForward(const affineInputs_t* inputs) {
     dim3 blockDim(32, 32);
     // Number of threads is the size of the output matrix
-    dim3 gridDim(ceil(1.0 * inputs->dataSize / blockDim.x),
+    dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
                  ceil(1.0 * inputs->numOutputs / blockDim.y));
     affineForwardKernel<<<gridDim, blockDim>>>(*inputs);
 }
 
-/*
-void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs,
-                    const affineGradients_t* gradients) {
+void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs) {
+    // dL/dx and dL/dW are really just matrix multiplication kernels, so launch them with square
+    // grids
+    // Compute dL/dx
     dim3 blockDim(32, 32);
     // Number of threads is the size of the output matrix
+    // Output is of size matching x
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
-                 ceil(1.0 * inputs->numOutputs / blockDim.y));
-    affineBackwardKernel<<<gridDim, blockDim>>>(dev_dLdf, *aff1Inputs, *aff1Grads);
+                 ceil(1.0 * inputs->dataSize / blockDim.y));
+    dxKernel<<<gridDim, blockDim>>>(upstreamGradient, *inputs);
+
+    // Compute dL/dW
+    // Compute dL/db
+    dim3 blockDim2(32, 32);
+    // Number of threads is the size of the output matrix
+    // Output is of size matching W
+    dim3 gridDim2(ceil(1.0 * inputs->dataSize / blockDim.x),
+                  ceil(1.0 * inputs->numOutputs / blockDim.y));
+    dWdbKernel<<<gridDim2, blockDim2>>>(upstreamGradient, *inputs);
 }
 
-void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs,
-                  const affineGradients_t* gradients) {
+void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs) {
     dim3 blockDim(32, 32);
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
                  ceil(1.0 * inputs->numOutputs / blockDim.y));
-    affineUpdateKernel<<<gridDim, blockDim>>>(learnParameters, *aff1Inputs, *aff1Grads);
+    affineUpdateKernel<<<gridDim, blockDim>>>(*hyperParams, *inputs);
 }
-*/
+
+__global__ void affineForwardKernel(affineInputs_t inputs) {
+    unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
+    unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
+    unsigned int localSum = 0;
+
+    if (COL < inputs.batchSize && ROW < inputs.numOutputs) {
+        for (unsigned int index = 0; index < inputs.dataSize; index++) {
+            localSum +=
+                inputs.x[inputs.batchSize * index + COL] * inputs.W[ROW * inputs.dataSize + index];
+        }
+        inputs.f[ROW * inputs.batchSize + COL] = localSum + inputs.b[ROW];
+    }
+
+    return;
+}
+
+// dL/dW is a matrix multiply dL/df * x^T
+// dL/db is a row wise sum of upstream gradients, we already read dLdf across the row, so compute
+// the sum here as well
+__global__ void dWdbKernel(const float* dLdf, affineInputs_t inputs) {
+    int col = threadIdx.x + blockIdx.x * blockDim.x;
+    int row = threadIdx.y + blockIdx.y * blockDim.y;
+    float localSum = 0;
+    float localdBSum = 0;
+
+    // Output is (numOutputs, inputSize), same size as W
+    if (row < inputs.numOutputs && col < inputs.dataSize) {
+        for (int i = 0; i < inputs.batchSize; i++) {
+            // Access dLdf like normal, access x as x^T, so read across col'th row
+            float grad = dLdf[row * inputs.batchSize + i];
+            localSum += grad * inputs.x[col * inputs.batchSize + i];
+            localdBSum += grad;
+        }
+        inputs.dLdW[row * inputs.dataSize + col] = localSum;
+        // All threads compute the sum for dB, since we've already read the value we need, but we
+        // really only need the first column to store it out. Not sure if this matters for
+        // performance at all, but don't think it will hurt
+        if (col == 0) {
+            inputs.dLdB[row] = localdBSum;
+        }
+    }
+}
+
+// dL/dx is a matrix multiply W^T * dL/df
+__global__ void dxKernel(const float* dLdf, affineInputs_t inputs) {
+    int col = threadIdx.x + blockIdx.x * blockDim.x;
+    int row = threadIdx.y + blockIdx.y * blockDim.y;
+    unsigned int localSum = 0;
+
+    // Output is (inputSize, batchSize), same size as x
+    if (row < inputs.dataSize && col < inputs.batchSize) {
+        for (int i = 0; i < inputs.numOutputs; i++) {
+            // Access W as W^T, so read across row'th col, Access dLdf like normal,
+            localSum += inputs.W[i * inputs.dataSize + row] * dLdf[i * inputs.batchSize + col];
+        }
+        inputs.dLdx[row * inputs.batchSize + col] = localSum;
+    }
+}
+
+__global__ void affineUpdateKernel(learnParams_t hyperParams, affineInputs_t inputs) {
+    unsigned int COL = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int ROW = threadIdx.y + blockIdx.y * blockDim.y;
+
+    if (COL < inputs.batchSize && ROW < inputs.numOutputs) {
+        inputs.W[ROW * inputs.numOutputs + COL] = - hyperParams.learningRate * inputs.dlDW;
+    }
+
+ return;
+}
+
 // This could be good code to use as a starting point for creating the rectangular matrix
 // multiply It could become the affineForward kernel
 
@@ -84,36 +167,36 @@ void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs
 // uses shared memory to tile the computation to eliminate extra accesses to
 // global memory
 // This is my own test for fun taking the original tiled MM and making it's accesses coalesced
-__global__ void affineForwardKernel(float* A, float* B, float* C, const unsigned int NUMELEM) {
-    // Copy code from in-class activity
-
-    unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
-    unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
-
-    __shared__ float tileA[BLOCKDIMTILE][BLOCKDIMTILE];
-    __shared__ float tileB[BLOCKDIMTILE][BLOCKDIMTILE];
-
-    float localSum = 0;
-
-    for (int phase = 0; phase < NUMELEM; phase += BLOCKDIMTILE) {
-        // Both accesses are coalesced here
-        tileA[threadIdx.y][threadIdx.x] = A[ROW * NUMELEM + phase + threadIdx.x];
-        tileB[threadIdx.y][threadIdx.x] = B[(phase + threadIdx.y) * NUMELEM + COL];
-
-        __syncthreads();
-
-        for (int k = 0; k < BLOCKDIMTILE; k++) {
-            // The first access is broadcase since all threads when blockdimtile is 32 have same
-            // y, and k THe second access is spread out across banks since constant k, and
-            // increasing x
-            localSum += tileA[threadIdx.y][k] * tileB[k][threadIdx.x];
-        }
-
-        __syncthreads();
-    }
-
-    // This one is coalesced as well
-    C[ROW * NUMELEM + COL] = localSum;
-
-    return;
-}
+//__global__ void affineForwardKernel(float* A, float* B, float* C, const unsigned int NUMELEM) {
+//    // Copy code from in-class activity
+//
+//    unsigned int COL = threadIdx.x + blockDim.x * blockIdx.x;
+//    unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
+//
+//    __shared__ float tileA[BLOCKDIMTILE][BLOCKDIMTILE];
+//    __shared__ float tileB[BLOCKDIMTILE][BLOCKDIMTILE];
+//
+//    float localSum = 0;
+//
+//    for (int phase = 0; phase < NUMELEM; phase += BLOCKDIMTILE) {
+//        // Both accesses are coalesced here
+//        tileA[threadIdx.y][threadIdx.x] = A[ROW * NUMELEM + phase + threadIdx.x];
+//        tileB[threadIdx.y][threadIdx.x] = B[(phase + threadIdx.y) * NUMELEM + COL];
+//
+//        __syncthreads();
+//
+//        for (int k = 0; k < BLOCKDIMTILE; k++) {
+//            // The first access is broadcase since all threads when blockdimtile is 32 have same
+//            // y, and k THe second access is spread out across banks since constant k, and
+//            // increasing x
+//            localSum += tileA[threadIdx.y][k] * tileB[k][threadIdx.x];
+//        }
+//
+//        __syncthreads();
+//    }
+//
+//    // This one is coalesced as well
+//    C[ROW * NUMELEM + COL] = localSum;
+//
+//    return;
+//}
