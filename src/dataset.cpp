@@ -14,6 +14,8 @@ data_t * importDataset(const char *filename, float trainPercent) {
     int tempPush = 0, counter = 0, tempInt = 0;
     ifstream fin;
 
+    std::vector<float> inputData;
+
     //Gather data and put in struct
     //open file for input
     fin.open(filename,ios::in | ios::binary | ios::ate);
@@ -39,8 +41,12 @@ data_t * importDataset(const char *filename, float trainPercent) {
             temp = current[tempPush];
             tempInt = int(temp);
 
-            outputData->xTrain[pixelTrain + imageTrain * 3072] = float(tempInt);
+	    // Build up the new vector
+            inputData.push_back(float(tempInt));
         }
+	// Add the new vector to our set
+	outputData->xTrain.push_back(inputData);
+	inputData.clear();
     }
 
     //place in struct, validation set
@@ -54,8 +60,12 @@ data_t * importDataset(const char *filename, float trainPercent) {
             temp = current[tempPush];
             tempInt = int(temp);
 
-            outputData->xVal[pixelVal + counter * 3072] = float(tempInt);
+	    // Build up the new vector
+            inputData.push_back(float(tempInt));
         }
+	// Add the new vector to our set
+	outputData->xVal.push_back(inputData);
+	inputData.clear();
 
         counter++;
     }
@@ -63,25 +73,3 @@ data_t * importDataset(const char *filename, float trainPercent) {
     delete current;
     return outputData;
 }
-
-//tests this function
-
-/*
-int main() {
-    cout << "Gathering data..." << endl;
-
-    data_t *dataset = importDataset("data_batch_1.bin", 0.6);
-
-    //for testing on https://onlinepngtools.com/convert-rgb-values-to-png
-    cout << "First image pixels:" << endl;
-
-    for (int indexRow = 0; indexRow < 32; indexRow++) {
-        for (int indexCol = 0; indexCol < 32; indexCol++) {
-            cout << " " << dataset->xTrain[indexRow * 32 + indexCol];
-        }
-        cout << endl;
-    }
-
-    return 0;
-}
-*/

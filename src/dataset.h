@@ -12,9 +12,9 @@
 using namespace std;
 
 typedef struct _data {
-    float xTrain[DIM * ELEM * 3];
+    vector<vector<float> > xTrain;
     vector<uint8_t> yTrain;
-    float xVal[DIM * ELEM * 3];
+    vector<vector<float> > xVal;
     vector<uint8_t> yVal;
 } data_t;
 

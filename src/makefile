@@ -1,5 +1,5 @@
 SOURCEDIR = .
-EXE = main
+EXE = DNN
 
 SOURCES = $(wildcard $(SOURCEDIR)/*.cu)
 OBJECTS = $(SOURCES:.cu=.o)
@@ -48,17 +48,17 @@ clean:
 debug: $(DBGEXE)
 
 $(DBGEXE): $(DBGOBJS)
-	$(CC) $(DBGFLAGS) $(ARCHS) -I$(LIBS) $^ -o $@
+	$(CC) $(DBGFLAGS) $(ARCHS) $^ -o $@
 
 $(DBGDIR)/%.o: %.cu
-	$(CC) $(DBGFLAGS) $(ARCHS) -I$(LIBS) $< -c -o $@
+	$(CC) $(DBGFLAGS) $(ARCHS) $< -c -o $@
 
 # Release rules
 
 release: $(RELEXE)
 
 $(RELEXE): $(RELOBJS)
-	$(CC) $(RELFLAGS) $(ARCHS) -I$(LIBS) $^ -o $@
+	$(CC) $(RELFLAGS) $(ARCHS) $^ -o $@
 
 $(RELDIR)/%.o: %.cu
-	$(CC) $(RELFLAGS) $(ARCHS) -I$(LIBS) $< -c -o $@
+	$(CC) $(RELFLAGS) $(ARCHS) $< -c -o $@

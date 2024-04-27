@@ -95,10 +95,10 @@ int main(int argc, char *argv[]) {
 
     // ******** Start of Optimization ************
 
-    learnParams_t *learnParameters;
-    learnParameters->learningRate = LEARNINGRATE;
-    learnParameters->momentumDecay = MOMENTUMDECAY;
-    learnParameters->regStrength = ALPHA;
+    learnParams_t learnParameters;
+    learnParameters.learningRate = LEARNINGRATE;
+    learnParameters.momentumDecay = MOMENTUMDECAY;
+    learnParameters.regStrength = ALPHA;
 
     // Train for this many epochs
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
             // Using our learning rate, update our parameters based on the gradient
 
             // Update Affine1 layer weights
-            affineUpdate(learnParameters, aff1Inputs);
+            affineUpdate(&learnParameters, aff1Inputs);
 
             // Print out the loss for debugging
             float loss;
