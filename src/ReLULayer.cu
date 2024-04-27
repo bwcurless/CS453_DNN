@@ -32,11 +32,12 @@ __global__ void reluForwardKernel(reluInput_t inputs) {
 
     // Make sure thread is not out of bounds for our dim
     if (tid < inputs.dim) {
-        // Set thread's output to 0 automatically
-        inputs.outputs[tid] = 0;
-
         // Reset output to whatever is bigger: 0 or our input
-        atomicMax(&(inputs.outputs[tid]), inputs.inputs[tid]);
+        if (inputs.inputs[tid] > 0) {
+            inputs.outputs[tid] = inputs.inputs[tid];
+        } else {
+            inputs.outputs[tid] = 0;
+        }
     }
 
     // Operation done, end kernel
@@ -49,14 +50,14 @@ __global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
 
     // Make sure thread isn't out of bounds for our dim
     if (tid < inputs.dim) {
-        // Set gradientsOut to 0 automatically
-        gradientsOut[tid] = 0;
-
-        // Check if our input is greater than 0
+        // Check if our input was greater than 0
         if (inputs.inputs[tid] > 0) {
             // Reset gradientsOut for our index to whatever our upstreamGradients is
             // (1 * upstreamGradients) = upstreamGradients
-            atomicAdd(&gradientsOut[tid], upstreamGradients[tid]);
+            gradientsOut[tid] = upstreamGradients[tid];
+        } else {
+            // Kill the gradient if input was less than 0
+            gradientsOut[tid] = 0;
         }
     }
 

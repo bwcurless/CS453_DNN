@@ -103,17 +103,20 @@ int main(int argc, char *argv[]) {
     // Train for this many epochs
     for (int epoch = 0; epoch < NUMEPOCHS; epoch++) {
         // Iterate through as many minibatches as we need to complete an entire epoch
-        for (int batch = 0; batch < ceil(1.0 * dataset->yTrain->size / MINIBATCHSIZE); batch++) {
+        for (int batch = 0; batch < ceil(1.0 * dataset->yTrain.size() / MINIBATCHSIZE); batch++) {
             // Sample a minibatch of samples from training data
             unsigned int minibatchSize = MINIBATCHSIZE * INPUTSIZE;
-            char *minibatch = (char *)malloc(sizeof(char) * minibatchSize);
+            float *minibatch = (float *)malloc(sizeof(float) * minibatchSize);
 
             // TODO Sample the minibatch randomly from xTrain, and don't get any repeat inputs until
             // we are onto the next epoch
+            // Generate series of random numbers up to minibatchSize and access those indexes
+            // sequentially from there
 
             // Push minibatch to GPU. Push images and expected classes
-            gpuErrchk(
-                cudaMemcpy(dev_x, minibatch, sizeof(char) * minibatchSize, cudaMemcpyHostToDevice));
+            gpuErrchk(cudaMemcpy(dev_x, minibatch, sizeof(float) * minibatchSize,
+                                 cudaMemcpyHostToDevice));
+            free(minibatch);
 
             // Run forward and backward passes on minibatch of data, and update the gradient
 
