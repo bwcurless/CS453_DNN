@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
     printMatrix(host_inputData, MINIBATCHSIZE, INPUTSIZE);
 
     // Init upstream gradient
-    int fSize = sizeof(float) * NUMOUTPUTS * MINIBATCHSIZE;
+    size_t fSize = sizeof(float) * NUMOUTPUTS * MINIBATCHSIZE;
     float *host_dLdf = (float *)malloc(fSize);
     // Init to pseudo identity matrix to make checking easier
     for (int row = 0; row < NUMOUTPUTS; row++) {
@@ -99,14 +99,11 @@ int main(int argc, char *argv[]) {
     double tendBackward = omp_get_wtime();
 
     // Copy outputs off GPU
-    // I'll leave this up to you Evan
-
-    // float *host_gradient;
-    // host_gradient = (float *)malloc(sizeof(float) * NUMOUTPUTS * MINIBATCHSIZE);
-    // gpuErrchk(cudaMemcpy(host_gradient, softmaxInputs->dLdf,
-    //                     sizeof(float) * NUMOUTPUTS * MINIBATCHSIZE, cudaMemcpyDeviceToHost));
-    // printf("dL/df: \n");
-    // printMatrix(host_gradient, MINIBATCHSIZE, NUMOUTPUTS);
+    float *host_f;
+    host_f = (float *)malloc(fSize);
+    gpuErrchk(cudaMemcpy(host_f, affineInputs->f, fSize, cudaMemcpyDeviceToHost));
+    printf("f:\n");
+    printMatrix(host_f, MINIBATCHSIZE, NUMOUTPUTS);
 
     // Copy Gradients outputs off GPU
     float *host_dLdW;

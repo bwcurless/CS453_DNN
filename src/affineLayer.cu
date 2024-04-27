@@ -24,7 +24,7 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
 
     // Intermediate Scores f(x). The linear classifier's predicted scores f(x)=W*x+b
     float* dev_f;
-    gpuErrchk(cudaMalloc((float**)&dev_f, sizeof(float) * numOutputs));
+    gpuErrchk(cudaMalloc((float**)&dev_f, sizeof(float) * numOutputs * batchSize));
 
     // dL/dW1. How much the weights effect the loss
     float* dev_dLdW;
@@ -56,7 +56,7 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
 void affineForward(const affineInputs_t* inputs) {
     dim3 blockDim(32, 32);
     // Number of threads is the size of the output matrix
-    dim3 gridDim(ceil(1.0 * inputs->dataSize / blockDim.x),
+    dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
                  ceil(1.0 * inputs->numOutputs / blockDim.y));
     affineForwardKernel<<<gridDim, blockDim>>>(*inputs);
 }
@@ -94,14 +94,13 @@ __global__ void affineForwardKernel(affineInputs_t inputs) {
     unsigned int ROW = threadIdx.y + blockDim.y * blockIdx.y;
     unsigned int localSum = 0;
 
-    if (COL < inputs.dataSize && ROW < inputs.numOutputs) {
+    if (COL < inputs.batchSize && ROW < inputs.numOutputs) {
         for (unsigned int index = 0; index < inputs.dataSize; index++) {
             localSum +=
                 inputs.x[inputs.batchSize * index + COL] * inputs.W[ROW * inputs.dataSize + index];
         }
+        inputs.f[ROW * inputs.batchSize + COL] = localSum + inputs.b[ROW];
     }
-
-    inputs.f[ROW * inputs.batchSize + COL] = localSum + inputs.b[ROW];
 
     return;
 }
