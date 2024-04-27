@@ -101,7 +101,7 @@ __global__ void affineForwardKernel(affineInputs_t inputs) {
         }
     }
 
-    inputs.f[ROW * inputs.batchSize + COL];
+    inputs.f[ROW * inputs.batchSize + COL] = localSum + inputs.b[ROW];
 
     return;
 }
