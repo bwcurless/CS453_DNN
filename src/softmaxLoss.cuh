@@ -10,6 +10,7 @@ typedef struct _softmaxLoss_t {
     unsigned int batchSize;   // How many inputs were processed
     float* loss;              // How much loss was incurred over all classes
     float* dLdf;              // Gradient of loss with respect to predictions
+    float* accuracy;          // The accuracy of the predictions
 } softmaxLoss_t;
 
 /*! \brief Compute the softmax loss and gradient for the given input predictions

@@ -1,7 +1,7 @@
 #include "cudaHelpers.cuh"
 #include "softmaxLoss.cuh"
 
-__global__ void normalizeSoftmaxLossGrad(const softmaxLoss_t inputs);
+__global__ void normalizeSoftmaxOutputs(const softmaxLoss_t inputs);
 __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs);
 
 softmaxLoss_t *softmaxInit(unsigned int numClasses, unsigned int batchSize, float *f) {
@@ -13,6 +13,10 @@ softmaxLoss_t *softmaxInit(unsigned int numClasses, unsigned int batchSize, floa
     float *dev_softmax_loss;
     gpuErrchk(cudaMalloc((float **)&dev_softmax_loss, sizeof(float)));
 
+    // Accuracy
+    float *dev_accuracy;
+    gpuErrchk(cudaMalloc((float **)&dev_accuracy, sizeof(float)));
+
     // Softmax dL/df. How much the loss changes with respect to each class score from the last layer
     float *dev_dLdf;
     gpuErrchk(cudaMalloc((float **)&dev_dLdf, sizeof(float) * numClasses * batchSize));
@@ -20,6 +24,7 @@ softmaxLoss_t *softmaxInit(unsigned int numClasses, unsigned int batchSize, floa
     // I guess this can leak, but don't feel like dealing with it now
     softmaxLoss_t *softmaxInputs = (softmaxLoss_t *)malloc(sizeof(softmaxLoss_t));
     softmaxInputs->loss = dev_softmax_loss;
+    softmaxInputs->accuracy = dev_accuracy;
     softmaxInputs->dLdf = dev_dLdf;
     softmaxInputs->f = f;
     softmaxInputs->y = dev_y;
@@ -30,6 +35,11 @@ softmaxLoss_t *softmaxInit(unsigned int numClasses, unsigned int batchSize, floa
 }
 
 void softmaxLoss(softmaxLoss_t *inputs) {
+    // Init loss and accuracy to 0
+    float zero = 0.0;
+    cudaMemcpy(inputs->accuracy, &zero, sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(inputs->loss, &zero, sizeof(float), cudaMemcpyHostToDevice);
+
     dim3 blockDim(128);
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x));
     size_t sharedSize = inputs->batchSize * inputs->numClasses * sizeof(float);
@@ -40,7 +50,7 @@ void softmaxLoss(softmaxLoss_t *inputs) {
     // Should be able to run this all in one block since numClasses is small
     dim3 blockDim2(ceil(32.0 / inputs->numClasses) * 32);
     dim3 gridDim2(1);
-    normalizeSoftmaxLossGrad<<<gridDim2, blockDim2>>>(*inputs);
+    normalizeSoftmaxOutputs<<<gridDim2, blockDim2>>>(*inputs);
     gpuErrchk(cudaDeviceSynchronize());
 
     // Compute regularization loss as well
@@ -48,10 +58,13 @@ void softmaxLoss(softmaxLoss_t *inputs) {
 }
 
 // Normalize gradients and loss
-__global__ void normalizeSoftmaxLossGrad(const softmaxLoss_t inputs) {
+__global__ void normalizeSoftmaxOutputs(const softmaxLoss_t inputs) {
     int tid_x = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid_x == 0) {
         *inputs.loss /= inputs.batchSize;
+        *inputs.accuracy /= inputs.batchSize;
+        printf("Loss: %.3f\n", *inputs.loss);
+        printf("Training Accuracy: %.3f\n", *inputs.accuracy);
     }
 }
 
@@ -64,12 +77,6 @@ __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs) {
 
     float *cachedScores = (float *)shared;
 
-    // Set initial loss to 0 for this run
-    if (tid_x == 0) {
-        *inputs.loss = 0.0;
-    }
-    __syncthreads();
-
     // Compute loss
     if (tid_x < inputs.batchSize) {
         float imageLoss = 0.0;
@@ -80,14 +87,21 @@ __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs) {
         // Find max score for this thread, cache values in shared memory so we don't repeat
         // global accesses
         float maxScore = 0.0;
+        int maxScoreIndex = 0;
         for (int i = 0; i < inputs.numClasses; i++) {
             float val = inputs.f[i * inputs.batchSize + tid_x];
             cachedScores[threadIdx.x * inputs.numClasses + i] = val;
             if (i == 0) {
                 maxScore = val;
+                maxScoreIndex = i;
             } else if (val > maxScore) {
                 maxScore = val;
+                maxScoreIndex = i;
             }
+        }
+
+        if (maxScoreIndex == correctClassIndex) {
+            atomicAdd(inputs.accuracy, 1);
         }
 
         // Subtract max score from all of them so we don't numerically blow up

@@ -20,7 +20,8 @@ using namespace std;
 // function prototypes
 void warmUpGPU();
 void compareMatrices(float *C_GPU, float *C_CPU, unsigned int NUMELEM);
-void printMatrix(float *matrix, int width, int height);
+template <typename T>
+void printMatrix(T *matrix, int width, int height);
 void outputSumElems(float *C, unsigned int NUMELEM);
 
 int main(int argc, char *argv[]) {
@@ -40,7 +41,8 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < CLASSES * MINIBATCHSIZE; i++) {
         host_scores[i] = distribution(generator);
     }
-    // printMatrix(host_scores, MINIBATCHSIZE, CLASSES);
+    printf("Scores:\n");
+    printMatrix<float>(host_scores, MINIBATCHSIZE, CLASSES);
 
     // Push the scores to the GPU
     float *dev_f1;
@@ -57,6 +59,8 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < MINIBATCHSIZE; i++) {
         host_y[i] = i % 10;
     }
+    printf("Expected Classifications:\n");
+    printMatrix<unsigned int>(host_y, MINIBATCHSIZE, 1);
     gpuErrchk(cudaMemcpy(softmaxInputs->y, host_y, ySize, cudaMemcpyHostToDevice));
 
     double tstart = omp_get_wtime();
@@ -67,10 +71,15 @@ int main(int argc, char *argv[]) {
     double tend = omp_get_wtime();
 
     // Copy Loss off GPU
-    float *host_loss;
-    host_loss = (float *)malloc(sizeof(float));
-    gpuErrchk(cudaMemcpy(host_loss, softmaxInputs->loss, sizeof(float), cudaMemcpyDeviceToHost));
-    printf("Softmax Loss: %f\n", *host_loss);
+    float host_loss;
+    gpuErrchk(cudaMemcpy(&host_loss, softmaxInputs->loss, sizeof(float), cudaMemcpyDeviceToHost));
+    printf("Softmax Loss: %f\n", host_loss);
+
+    // Copy Accuracy off GPU
+    float host_accuracy;
+    gpuErrchk(
+        cudaMemcpy(&host_accuracy, softmaxInputs->accuracy, sizeof(float), cudaMemcpyDeviceToHost));
+    printf("Accuracy: %f\n", host_accuracy);
 
     // Copy gradient off GPU
     float *host_gradient;
@@ -78,7 +87,7 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaMemcpy(host_gradient, softmaxInputs->dLdf,
                          sizeof(float) * CLASSES * MINIBATCHSIZE, cudaMemcpyDeviceToHost));
     printf("dL/df: \n");
-    printMatrix(host_gradient, MINIBATCHSIZE, CLASSES);
+    printMatrix<float>(host_gradient, MINIBATCHSIZE, CLASSES);
 
     printf("\nTotal time GPU (s): %f", tend - tstart);
 
@@ -95,12 +104,13 @@ void warmUpGPU() {
     return;
 }
 
-void printMatrix(float *matrix, int width, int height) {
+template <typename T>
+void printMatrix(T *matrix, int width, int height) {
     int i, j;
     int cnt = 0;
     for (i = 0; i < height; i++) {
         for (j = 0; j < width; j++) {
-            printf("%.2f, ", matrix[cnt]);
+            printf("%.2f, ", (float)matrix[cnt]);
             cnt++;
         }
         printf("\n");
