@@ -52,7 +52,8 @@ void affineForward(const affineInputs_t* inputs);
  * \param inputs The cached values used to compute the forward pass of this layer.
  * \return void
  */
-void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs);
+void affineBackward(const float regularizationStrength, const float* upstreamGradient,
+                    const affineInputs_t* inputs);
 
 // Performs gradient descent and updates the weights W and offsets b. Includes regularization for W
 void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs);

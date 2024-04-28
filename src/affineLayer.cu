@@ -5,7 +5,8 @@
 __global__ void affineForwardKernel(affineInputs_t inputs);
 
 __global__ void dxKernel(const float* dLdf, affineInputs_t inputs);
-__global__ void dWdbKernel(const float* dLdf, affineInputs_t inputs);
+__global__ void dWdbKernel(const float regularizationStrength, const float* dLdf,
+                           affineInputs_t inputs);
 
 __global__ void affineUpdateKernel(learnParams_t hyperParams, affineInputs_t inputs);
 
@@ -61,7 +62,8 @@ void affineForward(const affineInputs_t* inputs) {
     affineForwardKernel<<<gridDim, blockDim>>>(*inputs);
 }
 
-void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs) {
+void affineBackward(const float regularizationStrength, const float* upstreamGradient,
+                    const affineInputs_t* inputs) {
     // dL/dx and dL/dW are really just matrix multiplication kernels, so launch them with square
     // grids
     // Compute dL/dx
@@ -79,7 +81,7 @@ void affineBackward(const float* upstreamGradient, const affineInputs_t* inputs)
     // Output is of size matching W
     dim3 gridDim2(ceil(1.0 * inputs->dataSize / blockDim.x),
                   ceil(1.0 * inputs->numOutputs / blockDim.y));
-    dWdbKernel<<<gridDim2, blockDim2>>>(upstreamGradient, *inputs);
+    dWdbKernel<<<gridDim2, blockDim2>>>(regularizationStrength, upstreamGradient, *inputs);
 }
 
 void affineUpdate(const learnParams_t* hyperParams, const affineInputs_t* inputs) {
@@ -108,7 +110,9 @@ __global__ void affineForwardKernel(affineInputs_t inputs) {
 // dL/dW is a matrix multiply dL/df * x^T
 // dL/db is a row wise sum of upstream gradients, we already read dLdf across the row, so compute
 // the sum here as well
-__global__ void dWdbKernel(const float* dLdf, affineInputs_t inputs) {
+// Computes the effect of regularization on W as well
+__global__ void dWdbKernel(const float regularizationStrength, const float* dLdf,
+                           affineInputs_t inputs) {
     int col = threadIdx.x + blockIdx.x * blockDim.x;
     int row = threadIdx.y + blockIdx.y * blockDim.y;
     float localSum = 0;
@@ -122,6 +126,10 @@ __global__ void dWdbKernel(const float* dLdf, affineInputs_t inputs) {
             localSum += grad * inputs.x[col * inputs.batchSize + i];
             localdBSum += grad;
         }
+        // Factor in regularization penalty here - dL/dW of L2 Norm of W
+        // Ends up being 2 * regStrength * W
+        localSum += 2 * regularizationStrength * inputs.W[row * inputs.dataSize + col];
+
         inputs.dLdW[row * inputs.dataSize + col] = localSum;
         // All threads compute the sum for dB, since we've already read the value we need, but we
         // really only need the first column to store it out. Not sure if this matters for

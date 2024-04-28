@@ -29,7 +29,7 @@
 
 // Hyper parameters
 #define LEARNINGRATE 0.001
-#define ALPHA 0.00001
+#define ALPHA 1.0
 #define MOMENTUMDECAY 0.75
 
 /* Function Prototypes */
@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
 
             // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given the
             // upstream gradients and the last inputs
-            affineBackward(softmaxInputs->dLdf, aff1Inputs);
+            affineBackward(learnParameters.regStrength, softmaxInputs->dLdf, aff1Inputs);
 
             // Using our learning rate, update our parameters based on the gradient
 
