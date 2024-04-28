@@ -1,6 +1,5 @@
 // To run this program, pass in the file path to the dataset and the neural network will train on
 // the dataset, and then the accuracy will be evaluated.
-
 #include <complex.h>
 #include <cuda_runtime.h>
 #include <math.h>
@@ -10,6 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <random>
 #include <vector>
 
@@ -24,9 +24,8 @@
 #define CLASSES 10
 // Size of the NN input layer (The size of the flattened image)
 #define INPUTSIZE 3072
-#define TRAINSIZE 10000
 #define MINIBATCHSIZE 1000
-#define NUMEPOCHS 100
+#define NUMEPOCHS 1
 
 // Hyper parameters
 #define LEARNINGRATE 0.001
@@ -105,18 +104,36 @@ int main(int argc, char *argv[]) {
         // Iterate through as many minibatches as we need to complete an entire epoch
         for (int batch = 0; batch < ceil(1.0 * dataset->yTrain.size() / MINIBATCHSIZE); batch++) {
             // Sample a minibatch of samples from training data
-            unsigned int minibatchSize = MINIBATCHSIZE * INPUTSIZE;
-            float *minibatch = (float *)malloc(sizeof(float) * minibatchSize);
+            unsigned int minibatchXSize = sizeof(float) * MINIBATCHSIZE * INPUTSIZE;
+            float *minibatchX = (float *)malloc(minibatchXSize);
+            unsigned int minibatchYSize = sizeof(unsigned int) * MINIBATCHSIZE;
+            unsigned int *minibatchY = (unsigned int *)malloc(minibatchYSize);
 
-            // TODO Sample the minibatch randomly from xTrain, and don't get any repeat inputs until
+            // Sample the minibatch randomly from xTrain, and don't get any repeat inputs until
             // we are onto the next epoch
             // Generate series of random numbers up to minibatchSize and access those indexes
             // sequentially from there
+            std::vector<int> indices(dataset->yTrain.size());
+            std::iota(indices.begin(), indices.end(), 0);
+            std::random_shuffle(indices.begin(), indices.end());
+
+            // Compose a new randomly sampled minibatch
+            for (int i = 0; i < MINIBATCHSIZE; i++) {
+                int indice = batch * MINIBATCHSIZE + i;
+                int randomIndice = indices[indice];
+                // Copy over the entire vector
+                for (int dim = 0; dim < INPUTSIZE; dim++) {
+                    minibatchX[INPUTSIZE * i + dim] = dataset->xTrain[randomIndice][dim];
+                }
+                minibatchY[i] = dataset->yTrain[randomIndice];
+            }
 
             // Push minibatch to GPU. Push images and expected classes
-            gpuErrchk(cudaMemcpy(dev_x, minibatch, sizeof(float) * minibatchSize,
-                                 cudaMemcpyHostToDevice));
-            free(minibatch);
+            gpuErrchk(cudaMemcpy(dev_x, minibatchX, minibatchXSize, cudaMemcpyHostToDevice));
+            gpuErrchk(
+                cudaMemcpy(softmaxInputs->y, minibatchY, minibatchYSize, cudaMemcpyHostToDevice));
+            free(minibatchX);
+            free(minibatchY);
 
             // Run forward and backward passes on minibatch of data, and update the gradient
 
@@ -144,12 +161,9 @@ int main(int argc, char *argv[]) {
             float loss;
             gpuErrchk(
                 cudaMemcpy(&loss, softmaxInputs->loss, sizeof(float), cudaMemcpyDeviceToHost));
-            printf("\nSoftmax Loss: %f", loss);
+            printf("Softmax Loss: %f\n", loss);
         }
     }
-
-    // TODO Optional, save model off so we don't have to retrain in the future
-
     // Evaluate accuracy of classifier on training dataset
     float trainAccuracy;
 
