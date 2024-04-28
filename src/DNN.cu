@@ -138,7 +138,7 @@ int main(int argc, char *argv[]) {
             // Using our learning rate, update our parameters based on the gradient
 
             // Update Affine1 layer weights
-            affineUpdate(&learnParameters, aff1Inputs);
+            // affineUpdate(&learnParameters, aff1Inputs);
 
             // Print out the loss for debugging
             float loss;
@@ -162,7 +162,6 @@ int main(int argc, char *argv[]) {
     float valAccuracy;
 
     // TODO Do the same for xVal and yVal and evaluate accuracy
-
     printf("Validation Accuracy: %f\n", valAccuracy);
 
     // Cleanup, free memory etc

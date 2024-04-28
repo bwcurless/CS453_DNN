@@ -9,6 +9,7 @@ CC = nvcc
 # Builds SASS for all architectures into one executable
 ARCHS = -arch=sm_75 \
 	-gencode=arch=compute_80,code=sm_80 \
+	-gencode=arch=compute_37,code=sm_37 \
 
 LIBS=""
 
@@ -34,7 +35,6 @@ RELFLAGS = -std=c++14 -O3 -Xcompiler -fopenmp -lcuda -lineinfo -D_MWAITXINTRIN_H
 # General rules
 
 all: prep release
-
 remake: clean all
 
 prep:
