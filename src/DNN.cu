@@ -120,6 +120,11 @@ int main(int argc, char *argv[]) {
             // Compose a new randomly sampled minibatch
             for (int i = 0; i < MINIBATCHSIZE; i++) {
                 int indice = batch * MINIBATCHSIZE + i;
+                // The last minibatch will have empty slots to fill with input data, wrap back
+                // around for simplicity
+                if (indice >= dataset->yTrain.size()) {
+                    indice = indice % dataset->yTrain.size();
+                }
                 int randomIndice = indices[indice];
                 // Copy over the entire vector
                 for (int dim = 0; dim < INPUTSIZE; dim++) {
@@ -156,12 +161,6 @@ int main(int argc, char *argv[]) {
 
             // Update Affine1 layer weights
             // affineUpdate(&learnParameters, aff1Inputs);
-
-            // Print out the loss for debugging
-            float loss;
-            gpuErrchk(
-                cudaMemcpy(&loss, softmaxInputs->loss, sizeof(float), cudaMemcpyDeviceToHost));
-            printf("Softmax Loss: %f\n", loss);
         }
     }
     // Evaluate accuracy of classifier on training dataset
@@ -170,6 +169,7 @@ int main(int argc, char *argv[]) {
     // TODO Run all the xTrain data through the model and evaluate the accuracy
     forward(aff1Inputs);
 
+    printf("\nFinal Results:\n");
     printf("Train Accuracy: %f\n", trainAccuracy);
 
     // Evaluate accuracy of classifier on validation dataset

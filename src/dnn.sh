@@ -51,7 +51,7 @@ esac
 # Do a test build locally to make sure there aren't errors before waiting in queue
 echo "Building executable to $outputFile"
 module load "cuda/$cudaModule"
-make release
+make remake
 
 # Define where outputs go
 outputPath="/scratch/$USER/"
@@ -77,7 +77,7 @@ jobid=$(sbatch --parsable <<SHELL
 module load "cuda/$cudaModule"
 
 # Can do arithmetic interpolation inside of $(( )). Need to escape properly
-make release
+make remake
 
 srun "./release/$outputFile" ~/datasets/cifar-10-batches-bin/data_batch_1.bin
 #compute-sanitizer --tool=memcheck "./$outputFile"
