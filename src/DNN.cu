@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
     }
     strcpy(filename, argv[1]);
 
-    data_t *dataset = importDataset(filename, 0.6);
+    data_t *dataset = importDataset(filename);
     // Should have a training dataset and a validation dataset. x are our inputs, y are the expected
     // outputs for each given input
 

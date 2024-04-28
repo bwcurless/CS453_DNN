@@ -2,12 +2,8 @@
 #ifndef __DATASET_H__
 #define __DATASET_H__
 #include <vector>
-#include <string>
-#include <iostream>
-#include <fstream>
+#include <cstdint>
 
-#define ELEM 10000
-#define DIM 1024
 
 using namespace std;
 
@@ -16,6 +12,8 @@ typedef struct _data {
     vector<uint8_t> yTrain;
     vector<vector<float> > xVal;
     vector<uint8_t> yVal;
+    vector<vector<float> > xTest;
+    vector<uint8_t> yTest;
 } data_t;
 
 /*! \brief Import Dataset from file
@@ -26,6 +24,6 @@ typedef struct _data {
  * \param  trainPercent Percentage of the dataset to use for training
  * \return data_t The Train/Val split dataset
  */
-data_t * importDataset(const char *filename, float trainPercent);
+data_t *importDataset(char *directoryPath);
 
 #endif /* ifndef __DATASET_H__ */
