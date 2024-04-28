@@ -8,6 +8,9 @@ typedef struct _reluInputs {
     unsigned int dim; /*!< Number of elements in the input and output */
 } reluInput_t;
 
+// Initialize structure variables
+reluInput_t reluInit(float* inputs, float* outputs, unsigned int dim);
+
 // outputs are max(0, input). Essentially we threshold everything negative to 0, and we pass
 // everything > 0 straight through unaltered.
 void reluForward(reluInput_t *inputs);

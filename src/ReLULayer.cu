@@ -5,6 +5,16 @@
 __global__ void reluForwardKernel(reluInput_t inputs);
 __global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
                                    float *gradientsOut);
+                                   
+reluInit_t reluInit(float* inputs, float* outputs, unsigned int dim) {
+    reluInit_t *newReLU = (reluInit_t*)malloc(sizeof(reluInit_t*));
+    newReLU->inputs = inputs;
+    newReLU->outputs = outputs;
+    newReLU->dim = dim;
+
+    float* dev_inputs;
+    gpuErrchk(cudaMalloc((float**)&dev_inputs, sizeof(reluInit_t));
+}
 
 void reluForward(reluInput_t *inputs) {
     // Set params for our kernel
@@ -32,12 +42,11 @@ __global__ void reluForwardKernel(reluInput_t inputs) {
 
     // Make sure thread is not out of bounds for our dim
     if (tid < inputs.dim) {
+        // Set thread's output to 0 automatically
+        inputs.outputs[tid] = 0;
+
         // Reset output to whatever is bigger: 0 or our input
-        if (inputs.inputs[tid] > 0) {
-            inputs.outputs[tid] = inputs.inputs[tid];
-        } else {
-            inputs.outputs[tid] = 0;
-        }
+        atomicMax(&(inputs.outputs[tid]), inputs.inputs[tid]);
     }
 
     // Operation done, end kernel
@@ -50,14 +59,14 @@ __global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
 
     // Make sure thread isn't out of bounds for our dim
     if (tid < inputs.dim) {
-        // Check if our input was greater than 0
+        // Set gradientsOut to 0 automatically
+        gradientsOut[tid] = 0;
+
+        // Check if our input is greater than 0
         if (inputs.inputs[tid] > 0) {
             // Reset gradientsOut for our index to whatever our upstreamGradients is
             // (1 * upstreamGradients) = upstreamGradients
-            gradientsOut[tid] = upstreamGradients[tid];
-        } else {
-            // Kill the gradient if input was less than 0
-            gradientsOut[tid] = 0;
+            atomicAdd(&gradientsOut[tid], upstreamGradients[tid]);
         }
     }
 

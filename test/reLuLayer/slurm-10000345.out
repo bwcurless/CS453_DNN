@@ -1,0 +1,4 @@
+Building executable to reluLayerTest
+../../src/ReLULayer.cu:74: error: unterminated argument list invoking macro "gpuErrchk"
+ }
+ 
