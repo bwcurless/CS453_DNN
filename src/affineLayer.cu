@@ -66,6 +66,11 @@ affineInputs_t* affineInit(unsigned int numOutputs, unsigned int batchSize,
 }
 
 void affineForward(const affineInputs_t* inputs) {
+    // Init loss to 0
+    float zero = 0.0;
+    cudaMemcpy(inputs->regLoss, &zero, sizeof(float), cudaMemcpyHostToDevice);
+    gpuErrchk(cudaDeviceSynchronize());
+
     dim3 blockDim(32, 32);
     // Number of threads is the size of the output matrix
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x),
@@ -140,9 +145,13 @@ __global__ void dWdbKernel(const float regularizationStrength, const float* dLdf
             localSum += grad * localGradient;
             localdBSum += grad;
         }
+        float w = inputs.W[row * inputs.dataSize + col];
+        // Lazy way to compute regularization loss for this layer
+        atomicAdd(inputs.regLoss, regularizationStrength * w * w);
+
         // Factor in regularization penalty here - dL/dW of L2 Norm of W
         // Ends up being 2 * regStrength * W
-        localSum += 2 * regularizationStrength * inputs.W[row * inputs.dataSize + col];
+        localSum += 2 * regularizationStrength * w;
 
         inputs.dLdW[row * inputs.dataSize + col] = localSum;
         // All threads compute the sum for dB, since we've already read the value we need, but we
@@ -151,10 +160,6 @@ __global__ void dWdbKernel(const float regularizationStrength, const float* dLdf
         if (col == 0) {
             inputs.dLdB[row] = localdBSum;
         }
-        // Lazy way to compute regularization loss
-        float w = inputs.W[row * inputs.dataSize + col];
-
-        atomicAdd(inputs.regLoss, regularizationStrength * w * w);
     }
 }
 
@@ -163,11 +168,6 @@ __global__ void dxKernel(const float* dLdf, affineInputs_t inputs) {
     int col = threadIdx.x + blockIdx.x * blockDim.x;
     int row = threadIdx.y + blockIdx.y * blockDim.y;
     float localSum = 0;
-
-    // Kind of a speed hack to clear this here since we need it in the next kernel
-    if (col == 0 and row == 0) {
-        *inputs.regLoss = 0.0;
-    }
 
     // Output is (inputSize, batchSize), same size as x
     if (row < inputs.dataSize && col < inputs.batchSize) {
