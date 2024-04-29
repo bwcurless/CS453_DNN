@@ -14,6 +14,8 @@ typedef struct AffineInputs {
     float* dLdx;
     float* dLdW;
     float* dLdB;
+    float* m;  // Momentum, averaged past gradients of W
+    float* regLoss;
     int numOutputs;
     int batchSize;
     int dataSize;

@@ -39,6 +39,7 @@ void softmaxLoss(softmaxLoss_t *inputs) {
     float zero = 0.0;
     cudaMemcpy(inputs->accuracy, &zero, sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(inputs->loss, &zero, sizeof(float), cudaMemcpyHostToDevice);
+    gpuErrchk(cudaDeviceSynchronize());
 
     dim3 blockDim(128);
     dim3 gridDim(ceil(1.0 * inputs->batchSize / blockDim.x));
@@ -48,13 +49,14 @@ void softmaxLoss(softmaxLoss_t *inputs) {
     gpuErrchk(cudaDeviceSynchronize());
 
     // Should be able to run this all in one block since numClasses is small
-    dim3 blockDim2(ceil(32.0 / inputs->numClasses) * 32);
+    dim3 blockDim2(32);
     dim3 gridDim2(1);
     normalizeSoftmaxOutputs<<<gridDim2, blockDim2>>>(*inputs);
     gpuErrchk(cudaDeviceSynchronize());
 
     // Compute regularization loss as well
     // It's not super important to have this, it's more important to factor it into the gradient
+    // Im actually calculating this separately in the affine layer and adding it in later
 }
 
 // Normalize gradients and loss
@@ -63,8 +65,8 @@ __global__ void normalizeSoftmaxOutputs(const softmaxLoss_t inputs) {
     if (tid_x == 0) {
         *inputs.loss /= inputs.batchSize;
         *inputs.accuracy /= inputs.batchSize;
-        printf("Loss: %.3f\n", *inputs.loss);
-        printf("Training Accuracy: %.3f\n", *inputs.accuracy);
+        // printf("Loss: %.3f\n", *inputs.loss);
+        // printf("Training Accuracy: %.3f\n", *inputs.accuracy);
     }
 }
 
@@ -123,7 +125,8 @@ __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs) {
         }
         imageLoss = -logf(correctClassScore / e_fSum);
 
-        // Each thread will reduce exponentiated score to here
+        // printf("Image %d loss is %f\n", tid_x, imageLoss);
+        //   Each thread will reduce exponentiated score to here
         atomicAdd(inputs.loss, imageLoss);
 
         // Compute gradient dL/df

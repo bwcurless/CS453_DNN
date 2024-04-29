@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
     double tstartBackward = omp_get_wtime();
 
     // execute kernel
-    affineBackward(dev_upstreamGradients, affineInputs);
+    affineBackward(0.0, dev_upstreamGradients, affineInputs);
 
     double tendBackward = omp_get_wtime();
 
