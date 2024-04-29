@@ -241,10 +241,9 @@ int main(int argc, char *argv[]) {
             printf("Averaged Loss: %f\n", runningLoss);
             printf("Regularization Loss: %f\n", runningRegLoss);
         }
+        double ttrainend = omp_get_wtime();
+        printf("Training Time: %f\n", ttrainend - ttrainstart);
     }
-    double ttrainend = omp_get_wtime();
-
-    // printf("Training Time: %f\n", ttrainend - ttrainstart);
 
     // Evaluate accuracy of classifier on training dataset
     float trainAccuracy;
