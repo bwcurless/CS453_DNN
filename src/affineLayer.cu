@@ -153,7 +153,7 @@ __global__ void affineUpdateKernel(learnParams_t hyperParams, affineInputs_t inp
     unsigned int ROW = threadIdx.y + blockIdx.y * blockDim.y;
 
     if (COL < inputs.batchSize && ROW < inputs.numOutputs) {
-        inputs.W[ROW * inputs.numOutputs + COL] = - hyperParams.learningRate * inputs.dlDW;
+        inputs.W[ROW * inputs.numOutputs + COL] = - hyperParams.learningRate * inputs.dlDW[ROW * inputs.numOutputs + COL];
     }
 
  return;
