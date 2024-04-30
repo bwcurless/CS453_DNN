@@ -6,14 +6,15 @@ __global__ void reluForwardKernel(reluInput_t inputs);
 __global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
                                    float *gradientsOut);
 
-reluInput_t *reluInit(float *inputs, float *outputs, unsigned int dim) {
+reluInput_t *reluInit(float *inputs, unsigned int dim) {
+    float *dev_outputs;
+    gpuErrchk(cudaMalloc((float **)&dev_outputs, sizeof(float) * dim));
+
     reluInput_t *newReLU = (reluInput_t *)malloc(sizeof(reluInput_t));
     newReLU->inputs = inputs;
-    newReLU->outputs = outputs;
+    newReLU->outputs = dev_outputs;
     newReLU->dim = dim;
 
-    float *dev_inputs;
-    gpuErrchk(cudaMalloc((float **)&dev_inputs, sizeof(reluInput_t)));
     return newReLU;
 }
 
