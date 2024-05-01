@@ -38,7 +38,9 @@
 void forward(affineInputs_t *aff1Inputs);
 void printMatrix(float *matrix, int width, int height);
 float randomRange(float min, float max);
-
+void transferMinibatch(int minibatchSize, int batchNumber, vector<unsigned int> *indices,
+                       vector<vector<float> > *x, vector<uint8_t> *y, float *dev_x,
+                       unsigned int *dev_y);
 using namespace std;
 
 int main(int argc, char *argv[]) {
@@ -52,8 +54,8 @@ int main(int argc, char *argv[]) {
 
     data_t *dataset = importDataset(filename);
     printf("Dataset y size: %d\n", dataset->yTest.size());
-    // Should have a training dataset and a validation dataset. x are our inputs, y are the expected
-    // outputs for each given input
+    // Should have a training dataset and a validation dataset. x are our inputs, y are the
+    // expected outputs for each given input
 
     // Normalization for training speed
     vector<float> means(dataset->xTrain[0].size(), 0.0);
@@ -138,55 +140,24 @@ int main(int argc, char *argv[]) {
             float runningAccuracy = 0.0;
             float runningLoss = 0.0;
             float runningRegLoss = 0.0;
+
+            // Generate series of random numbers to fill minibatches from. Only generate it once
+            // per epoch
+            std::vector<unsigned int> indices(dataset->yTrain.size());
+            std::iota(indices.begin(), indices.end(), 0);
+            std::random_shuffle(indices.begin(), indices.end());
+
             // Iterate through as many minibatches as we need to complete an entire epoch
             int numBatches = ceil(1.0 * dataset->yTrain.size() / MINIBATCHSIZE);
             for (int batch = 0; batch < numBatches; batch++) {
-                // printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch, numBatches);
+                printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch, numBatches);
+
                 //  Sample a minibatch of samples from training data
-                unsigned int minibatchXSize = sizeof(float) * MINIBATCHSIZE * INPUTSIZE;
-                float *minibatchX = (float *)malloc(minibatchXSize);
-                unsigned int minibatchYSize = sizeof(unsigned int) * MINIBATCHSIZE;
-                unsigned int *minibatchY = (unsigned int *)malloc(minibatchYSize);
-
-                // Sample the minibatch randomly from xTrain, and don't get any repeat inputs until
-                // we are onto the next epoch
-                // Generate series of random numbers up to minibatchSize and access those indexes
-                // sequentially from there
-                std::vector<unsigned int> indices(dataset->yTrain.size());
-                std::iota(indices.begin(), indices.end(), 0);
-                std::random_shuffle(indices.begin(), indices.end());
-
-                // Compose a new randomly sampled minibatch
-                for (int i = 0; i < MINIBATCHSIZE; i++) {
-                    int indice = batch * MINIBATCHSIZE + i;
-                    // The last minibatch will have empty slots to fill with input data, wrap back
-                    // around for simplicity
-                    if (indice >= dataset->yTrain.size()) {
-                        indice = indice % dataset->yTrain.size();
-                    }
-                    int randomIndice = indices[indice];
-                    // printf("Random Indice: %d\n", randomIndice);
-                    //  Copy over the entire vector
-                    for (int dim = 0; dim < INPUTSIZE; dim++) {
-                        // Need to push it on in a transposed fashion. Can't just push it row by
-                        // row, because the matrix x is really transposed from that orientation.
-                        minibatchX[MINIBATCHSIZE * dim + i] = dataset->xTrain[randomIndice][dim];
-                    }
-                    minibatchY[i] = dataset->yTrain[randomIndice];
-                }
-
-                // Push minibatch to GPU. Push images and expected classes
-                gpuErrchk(cudaMemcpy(dev_x, minibatchX, minibatchXSize, cudaMemcpyHostToDevice));
-                gpuErrchk(cudaMemcpy(softmaxInputs->y, minibatchY, minibatchYSize,
-                                     cudaMemcpyHostToDevice));
-                free(minibatchX);
-                free(minibatchY);
+                transferMinibatch(MINIBATCHSIZE, batch, &indices, &dataset->xTrain,
+                                  &dataset->yTrain, dev_x, softmaxInputs->y);
 
                 // Run forward and backward passes on minibatch of data, and update the gradient
-
                 forward(aff1Inputs);
-                // ReLU next
-                // Another Affine layer
 
                 // This layer computes the loss and the gradient of the loss with respect to the
                 // scores input to this layer
@@ -195,8 +166,8 @@ int main(int argc, char *argv[]) {
                 // At this point we will have the loss computed for every input image, and the
                 // gradient of our softmax function. We now begin to backpropogate the gradients
 
-                // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given the
-                // upstream gradients and the last inputs
+                // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given
+                // the upstream gradients and the last inputs
                 affineBackward(learnParameters.regStrength, softmaxInputs->dLdf, aff1Inputs);
 
                 // Using our learning rate, update our parameters based on the gradient
@@ -204,22 +175,23 @@ int main(int argc, char *argv[]) {
                 // Update Affine1 layer weights
                 affineUpdate(&learnParameters, aff1Inputs);
 
-                gpuErrchk(cudaMemcpy(host_b1, aff1Inputs->b, b1Size, cudaMemcpyDeviceToHost));
-                // printf("b\n");
-                // for (int i = 0; i < CLASSES; i++) {
-                //     printf("%f, ", host_b1[i]);
+                // gpuErrchk(cudaMemcpy(host_b1, aff1Inputs->b, b1Size,
+                // cudaMemcpyDeviceToHost));
+                //  printf("b\n");
+                //  for (int i = 0; i < CLASSES; i++) {
+                //      printf("%f, ", host_b1[i]);
+                //  }
+                //  printf("\nExpected Classes were:\n");
+                //  for (int i = 0; i < MINIBATCHSIZE; i++) {
+                //     printf("%d, ", minibatchY[i]);
                 // }
-                // printf("\nExpected Classes were:\n");
-                // for (int i = 0; i < MINIBATCHSIZE; i++) {
-                //    printf("%d, ", minibatchY[i]);
-                //}
-                // Copy f
-                // float *host_f = (float *)malloc(sizeof(float) * MINIBATCHSIZE * CLASSES);
-                // gpuErrchk(cudaMemcpy(host_f, aff1Inputs->f, sizeof(float) * MINIBATCHSIZE *
-                // CLASSES,
-                //                     cudaMemcpyDeviceToHost));
-                // printf("\nf\n");
-                // printMatrix(host_f, MINIBATCHSIZE, CLASSES);
+                //  Copy f
+                //  float *host_f = (float *)malloc(sizeof(float) * MINIBATCHSIZE * CLASSES);
+                //  gpuErrchk(cudaMemcpy(host_f, aff1Inputs->f, sizeof(float) * MINIBATCHSIZE *
+                //  CLASSES,
+                //                      cudaMemcpyDeviceToHost));
+                //  printf("\nf\n");
+                //  printMatrix(host_f, MINIBATCHSIZE, CLASSES);
 
                 // Pull accuracy
                 float softmaxLoss;
@@ -231,6 +203,7 @@ int main(int argc, char *argv[]) {
                 float accuracy;
                 gpuErrchk(cudaMemcpy(&accuracy, softmaxInputs->accuracy, sizeof(float),
                                      cudaMemcpyDeviceToHost));
+                printf("Batch Accuracy: %.2f\n", accuracy);
                 runningAccuracy += accuracy;
                 runningLoss += softmaxLoss + regLoss;
                 runningRegLoss += regLoss;
@@ -244,16 +217,6 @@ int main(int argc, char *argv[]) {
         double ttrainend = omp_get_wtime();
         printf("Training Time: %f\n", ttrainend - ttrainstart);
     }
-
-    // Evaluate accuracy of classifier on training dataset
-    float trainAccuracy;
-
-    // TODO Run all the xTrain data through the model and evaluate the accuracy
-    forward(aff1Inputs);
-
-    printf("\nFinal Results:\n");
-    printf("Train Accuracy: %f\n", trainAccuracy);
-
     // Evaluate accuracy of classifier on validation dataset
     float valAccuracy;
 
@@ -295,4 +258,42 @@ float randomRange(float min, float max) {
     num = num * range + min;
     printf("Random Number is: %.2f\n", num);
     return num;
+}
+
+// Copies a minibatch of data over from x and y into pre allocated buffers for x and y to be
+// later copied to device. Pass in the indices of the larger set you wish to use. The length of
+// indices needs to match the minibatch size. It will need to be padded at the end of the
+// minibatch as well.
+void transferMinibatch(int minibatchSize, int batchNumber, vector<unsigned int> *indices,
+                       vector<vector<float> > *x, vector<uint8_t> *y, float *dev_x,
+                       unsigned int *dev_y) {
+    // Allocate host memory space to create minibatch in
+    unsigned int minibatchXSize = sizeof(float) * minibatchSize * INPUTSIZE;
+    float *minibatchX = (float *)malloc(minibatchXSize);
+    unsigned int minibatchYSize = sizeof(unsigned int) * minibatchSize;
+    unsigned int *minibatchY = (unsigned int *)malloc(minibatchYSize);
+
+    // Sample a minibatch based on the passed in indices
+    for (int i = 0; i < minibatchSize; i++) {
+        int indice = batchNumber * minibatchSize + i;
+        // The last minibatch will have empty slots to fill with input data, wrap back
+        // around for simplicity
+        if (indice >= y->size()) {
+            indice = indice % y->size();
+        }
+        int randomIndice = (*indices)[i];
+        //  Copy over the entire vector
+        for (int dim = 0; dim < INPUTSIZE; dim++) {
+            // Need to push it on in a transposed fashion. Can't just push it row by
+            // row, because the matrix x is really transposed from that orientation.
+            minibatchX[minibatchSize * dim + i] = (*x)[randomIndice][dim];
+        }
+        minibatchY[i] = (*y)[randomIndice];
+    }
+    // Push minibatch to GPU. Push images and expected classes
+    gpuErrchk(cudaMemcpy(dev_x, minibatchX, minibatchXSize, cudaMemcpyHostToDevice));
+    gpuErrchk(cudaMemcpy(dev_y, minibatchY, minibatchYSize, cudaMemcpyHostToDevice));
+
+    free(minibatchX);
+    free(minibatchY);
 }
