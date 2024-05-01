@@ -28,9 +28,9 @@
 #define INPUTSIZE 3072
 #define HIDDENLAYERSIZE 100
 #define MINIBATCHSIZE 1000
-#define NUMEPOCHS 20
+#define NUMEPOCHS 40
 
-#define TEST 0
+#define TEST 1
 
 // Hyper parameters
 #define MOMENTUMDECAY 0.9
@@ -114,10 +114,11 @@ int main(int argc, char *argv[]) {
     // Softmax loss layer
     softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, aff2Inputs->f);
 
+    // Hyperparameter tuning section
     int paramaterFindingIterations = 1;
     for (int iteration = 0; iteration < paramaterFindingIterations; iteration++) {
-        float reg = 0;           // pow(10.0, randomRange(-1, 1));
-        float learnRate = 1e-3;  // pow(10.0, randomRange(-3, 1));
+        float reg = 9e-1;        // pow(10.0, randomRange(-1, 0));
+        float learnRate = 1e-4;  // pow(10.0, randomRange(-5, -3));
         printf("reg: %.1e, learn: %.1e\n", reg, learnRate);
 
         // ****** Initialize Model Parameters *********
@@ -193,7 +194,7 @@ int main(int argc, char *argv[]) {
             // Iterate through as many minibatches as we need to complete an entire epoch
             int numBatches = ceil(1.0 * dataset->yTrain.size() / MINIBATCHSIZE);
             for (int batch = 0; batch < numBatches; batch++) {
-                // printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch+1, numBatches);
+                printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch + 1, numBatches);
 
                 //  Sample a minibatch of samples from training data
                 transferMinibatch(MINIBATCHSIZE, batch, &indices, &dataset->xTrain,

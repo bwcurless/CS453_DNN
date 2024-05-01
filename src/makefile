@@ -7,7 +7,7 @@ OBJECTS = $(SOURCES:.cu=.o)
 CC = nvcc
 
 # Builds SASS for all architectures into one executable
-ARCHS = -arch=sm_37 \
+ARCHS = -arch=sm_80 \
 
 LIBS=""
 

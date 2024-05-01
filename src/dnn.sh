@@ -19,7 +19,7 @@ outputFile="DNN"
 
 # Determine what target to build and run on
 case $target in
-	a100)
+	a100 | *)
 		echo "Running on a100"
 		CC=80
 		cudaModule=12.3.2
@@ -40,8 +40,8 @@ case $target in
 		gpu=p100
 		;;
 
-	k80 | *)
-		echo "Default mode k80"
+	k80)
+		echo "Running on k80"
 		CC=37
 		cudaModule=11.7 # k80's only run on this
 		gpu=k80
