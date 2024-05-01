@@ -26,16 +26,20 @@
 #define CLASSES 10
 // Size of the NN input layer (The size of the flattened image)
 #define INPUTSIZE 3072
+#define HIDDENLAYERSIZE 100
 #define MINIBATCHSIZE 1000
 #define NUMEPOCHS 20
 
-#define TEST 1
+#define TEST 0
 
 // Hyper parameters
 #define MOMENTUMDECAY 0.9
 
 /* Function Prototypes */
-void forward(affineInputs_t *aff1Inputs);
+void forward(affineInputs_t *aff1Inputs, reluInput_t *reluInputs, affineInputs_t *aff2Inputs);
+void backward(float regStrength, float *dLdf, affineInputs_t *aff1Inputs, reluInput_t *reluInputs,
+              affineInputs_t *aff2Inputs);
+void update(learnParams_t *learnParameters, affineInputs_t *aff1Inputs, affineInputs_t *aff2Inputs);
 void printMatrix(float *matrix, int width, int height);
 float randomRange(float min, float max);
 void transferMinibatch(int minibatchSize, int batchNumber, vector<unsigned int> *indices,
@@ -97,42 +101,71 @@ int main(int argc, char *argv[]) {
     float *dev_x;
     gpuErrchk(cudaMalloc((float **)&dev_x, sizeof(float) * MINIBATCHSIZE * INPUTSIZE));
 
-    // First affine layer
-    affineInputs_t *aff1Inputs = affineInit(CLASSES, MINIBATCHSIZE, INPUTSIZE, dev_x);
+    // First affine layer, creates HIDDENLAYERSIZE outputs
+    affineInputs_t *aff1Inputs = affineInit(HIDDENLAYERSIZE, MINIBATCHSIZE, INPUTSIZE, dev_x);
+
+    // ReLU intermediate layer
+    reluInput_t *reluInputs = reluInit(aff1Inputs->f, HIDDENLAYERSIZE * MINIBATCHSIZE);
+
+    // Second affine layer
+    affineInputs_t *aff2Inputs =
+        affineInit(CLASSES, MINIBATCHSIZE, HIDDENLAYERSIZE, reluInputs->outputs);
 
     // Softmax loss layer
-    softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, aff1Inputs->f);
+    softmaxLoss_t *softmaxInputs = softmaxInit(CLASSES, MINIBATCHSIZE, aff2Inputs->f);
 
     int paramaterFindingIterations = 1;
     for (int iteration = 0; iteration < paramaterFindingIterations; iteration++) {
-        float reg = 2.5e0;         // pow(10.0, randomRange(0, 1));
-        float learnRate = 6.6e-7;  // pow(10.0, randomRange(-8, -6));
+        float reg = 0;           // pow(10.0, randomRange(-1, 1));
+        float learnRate = 1e-3;  // pow(10.0, randomRange(-3, 1));
         printf("reg: %.1e, learn: %.1e\n", reg, learnRate);
 
         // ****** Initialize Model Parameters *********
 
         // W1 needs to be set to small values, gaussian distribution, 0 mean
         float weightScale = 0.001;
-        int W1Size = sizeof(float) * CLASSES * INPUTSIZE;
+        int W1Size = sizeof(float) * HIDDENLAYERSIZE * INPUTSIZE;
         float *host_W1 = (float *)malloc(W1Size);
         std::default_random_engine generator;
         std::normal_distribution<float> distribution(0.0, weightScale);
 
-        for (int i = 0; i < CLASSES * INPUTSIZE; i++) {
+        for (int i = 0; i < HIDDENLAYERSIZE * INPUTSIZE; i++) {
             host_W1[i] = distribution(generator);
         }
         // Copy W1 to device
         gpuErrchk(cudaMemcpy(aff1Inputs->W, host_W1, W1Size, cudaMemcpyHostToDevice));
+        free(host_W1);
 
         // b1 needs to be set to 0 for no offsets at first
-        int b1Size = sizeof(float) * CLASSES;
+        int b1Size = sizeof(float) * HIDDENLAYERSIZE;
         float *host_b1 = (float *)malloc(b1Size);
-        for (int i = 0; i < CLASSES; i++) {
+        for (int i = 0; i < HIDDENLAYERSIZE; i++) {
             host_b1[i] = 0.0;
         }
         // Copy b1 to device
         gpuErrchk(cudaMemcpy(aff1Inputs->b, host_b1, b1Size, cudaMemcpyHostToDevice));
+        free(host_b1);
 
+        // W2 needs to be set to small values, gaussian distribution, 0 mean
+        int W2Size = sizeof(float) * CLASSES * HIDDENLAYERSIZE;
+        float *host_W2 = (float *)malloc(W2Size);
+
+        for (int i = 0; i < CLASSES * HIDDENLAYERSIZE; i++) {
+            host_W2[i] = distribution(generator);
+        }
+        // Copy W2 to device
+        gpuErrchk(cudaMemcpy(aff2Inputs->W, host_W2, W2Size, cudaMemcpyHostToDevice));
+        free(host_W2);
+
+        // b1 needs to be set to 0 for no offsets at first
+        int b2Size = sizeof(float) * CLASSES;
+        float *host_b2 = (float *)malloc(b2Size);
+        for (int i = 0; i < CLASSES; i++) {
+            host_b2[i] = 0.0;
+        }
+        // Copy b2 to device
+        gpuErrchk(cudaMemcpy(aff2Inputs->b, host_b2, b2Size, cudaMemcpyHostToDevice));
+        free(host_b2);
         // ******** Start of Optimization ************
 
         learnParams_t learnParameters;
@@ -167,7 +200,7 @@ int main(int argc, char *argv[]) {
                                   &dataset->yTrain, dev_x, softmaxInputs->y);
 
                 // Run forward and backward passes on minibatch of data, and update the gradient
-                forward(aff1Inputs);
+                forward(aff1Inputs, reluInputs, aff2Inputs);
 
                 // This layer computes the loss and the gradient of the loss with respect to the
                 // scores input to this layer
@@ -178,12 +211,11 @@ int main(int argc, char *argv[]) {
 
                 // Evaluate gradient for affine layer with respect to W and b f(x)=W*x+b, given
                 // the upstream gradients and the last inputs
-                affineBackward(learnParameters.regStrength, softmaxInputs->dLdf, aff1Inputs);
+                backward(learnParameters.regStrength, softmaxInputs->dLdf, aff1Inputs, reluInputs,
+                         aff2Inputs);
 
                 // Using our learning rate, update our parameters based on the gradient
-
-                // Update Affine1 layer weights
-                affineUpdate(&learnParameters, aff1Inputs);
+                update(&learnParameters, aff1Inputs, aff2Inputs);
 
                 // gpuErrchk(cudaMemcpy(host_b1, aff1Inputs->b, b1Size,
                 // cudaMemcpyDeviceToHost));
@@ -244,7 +276,7 @@ int main(int argc, char *argv[]) {
                               softmaxInputs->y);
 
             // Run forward and backward passes on minibatch of data, and update the gradient
-            forward(aff1Inputs);
+            forward(aff1Inputs, reluInputs, aff2Inputs);
 
             // This layer computes the loss and the gradient of the loss with respect to the
             // scores input to this layer
@@ -276,7 +308,7 @@ int main(int argc, char *argv[]) {
                               dev_x, softmaxInputs->y);
 
             // Run forward and backward passes on minibatch of data, and update the gradient
-            forward(aff1Inputs);
+            forward(aff1Inputs, reluInputs, aff2Inputs);
 
             // This layer computes the loss and the gradient of the loss with respect to the
             // scores input to this layer
@@ -302,9 +334,24 @@ int main(int argc, char *argv[]) {
  * \param aff1Inputs Inputs for first affine layer
  * \return void
  */
-void forward(affineInputs_t *aff1Inputs) {
+void forward(affineInputs_t *aff1Inputs, reluInput_t *reluInputs, affineInputs_t *aff2Inputs) {
     // Compute f(x)=W1*x+b1 forward pass
     affineForward(aff1Inputs);
+    reluForward(reluInputs);
+    affineForward(aff2Inputs);
+}
+
+void backward(float regStrength, float *dLdf, affineInputs_t *aff1Inputs, reluInput_t *reluInputs,
+              affineInputs_t *aff2Inputs) {
+    affineBackward(regStrength, dLdf, aff2Inputs);
+    reluBackward(aff2Inputs->dLdx, reluInputs);
+    affineBackward(regStrength, reluInputs->dLdin, aff1Inputs);
+}
+
+void update(learnParams_t *learnParameters, affineInputs_t *aff1Inputs,
+            affineInputs_t *aff2Inputs) {
+    affineUpdate(learnParameters, aff1Inputs);
+    affineUpdate(learnParameters, aff2Inputs);
 }
 
 void printMatrix(float *matrix, int width, int height) {
@@ -324,7 +371,7 @@ float randomRange(float min, float max) {
     // Random number [0-1)
     float num = rand() / (RAND_MAX + 1.);
     num = num * range + min;
-    printf("Random Number is: %.2f\n", num);
+    // printf("Random Number is: %.2f\n", num);
     return num;
 }
 

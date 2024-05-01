@@ -5,6 +5,7 @@
 typedef struct _reluInputs {
     float *inputs;    /*!< Inputs to the ReLU layer */
     float *outputs;   /*!< Outputs from the ReLU layer */
+    float *dLdin;     /*!< Gradient of Loss with respect to the inputs */
     unsigned int dim; /*!< Number of elements in the input and output */
 } reluInput_t;
 
@@ -17,6 +18,6 @@ void reluForward(reluInput_t *inputs);
 
 // gradientsOut is 1 * upstreamGradients if the input for that gradient was > 0, and gradient is 0
 // if the input for that gradient was <= 0.
-void reluBackward(float *upstreamGradients, reluInput_t *inputs, float *gradientsOut);
+void reluBackward(float *upstreamGradients, reluInput_t *inputs);
 
 #endif /* ifndef __RELULAYER_H__ */

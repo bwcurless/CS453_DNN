@@ -3,16 +3,19 @@
 #include "math.h"
 
 __global__ void reluForwardKernel(reluInput_t inputs);
-__global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
-                                   float *gradientsOut);
+__global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs);
 
 reluInput_t *reluInit(float *inputs, unsigned int dim) {
     float *dev_outputs;
     gpuErrchk(cudaMalloc((float **)&dev_outputs, sizeof(float) * dim));
 
+    float *dev_dLdin;
+    gpuErrchk(cudaMalloc((float **)&dev_dLdin, sizeof(float) * dim));
+
     reluInput_t *newReLU = (reluInput_t *)malloc(sizeof(reluInput_t));
     newReLU->inputs = inputs;
     newReLU->outputs = dev_outputs;
+    newReLU->dLdin = dev_dLdin;
     newReLU->dim = dim;
 
     return newReLU;
@@ -28,13 +31,13 @@ void reluForward(reluInput_t *inputs) {
     gpuErrchk(cudaDeviceSynchronize());
 }
 
-void reluBackward(float *upstreamGradients, reluInput_t *inputs, float *gradientsOut) {
+void reluBackward(float *upstreamGradients, reluInput_t *inputs) {
     // Set params for our kernel
     int blockDim = 128;
     int gridDim = ceil(1.0 * inputs->dim / blockDim);
 
     // Run cuda kernel for backward relu operation
-    reluBackwardKernel<<<gridDim, blockDim>>>(upstreamGradients, *inputs, gradientsOut);
+    reluBackwardKernel<<<gridDim, blockDim>>>(upstreamGradients, *inputs);
     gpuErrchk(cudaDeviceSynchronize());
 }
 
@@ -55,8 +58,7 @@ __global__ void reluForwardKernel(reluInput_t inputs) {
     // Operation done, end kernel
 }
 
-__global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
-                                   float *gradientsOut) {
+__global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs) {
     // Assign tid
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
@@ -66,10 +68,10 @@ __global__ void reluBackwardKernel(float *upstreamGradients, reluInput_t inputs,
         if (inputs.inputs[tid] > 0) {
             // Reset gradientsOut for our index to whatever our upstreamGradients is
             // (1 * upstreamGradients) = upstreamGradients
-            gradientsOut[tid] = upstreamGradients[tid];
+            inputs.dLdin[tid] = upstreamGradients[tid];
         } else {
             // Kill the gradient if input was less than 0
-            gradientsOut[tid] = 0;
+            inputs.dLdin[tid] = 0;
         }
     }
 }
