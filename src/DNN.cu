@@ -29,9 +29,9 @@
 #define MINIBATCHSIZE 1000
 #define NUMEPOCHS 20
 
+#define TEST 1
+
 // Hyper parameters
-#define LEARNINGRATE 0.0001
-#define ALPHA 25000
 #define MOMENTUMDECAY 0.9
 
 /* Function Prototypes */
@@ -74,6 +74,16 @@ int main(int argc, char *argv[]) {
             dataset->xTrain[image][pixel] -= means[pixel];
         }
     }
+    for (int image = 0; image < dataset->xVal.size(); image++) {
+        for (int pixel = 0; pixel < means.size(); pixel++) {
+            dataset->xVal[image][pixel] -= means[pixel];
+        }
+    }
+    for (int image = 0; image < dataset->xTest.size(); image++) {
+        for (int pixel = 0; pixel < means.size(); pixel++) {
+            dataset->xTest[image][pixel] -= means[pixel];
+        }
+    }
 
     // ********* Construct the network *************
     // The network is essentially constructed from memory allocated to store all the data as it
@@ -95,8 +105,8 @@ int main(int argc, char *argv[]) {
 
     int paramaterFindingIterations = 1;
     for (int iteration = 0; iteration < paramaterFindingIterations; iteration++) {
-        float reg = 4e1;         //= pow(10.0, randomRange(4, 5));
-        float learnRate = 5e-7;  //	pow(10.0, randomRange(-8, -4));
+        float reg = 2.5e0;         // pow(10.0, randomRange(0, 1));
+        float learnRate = 6.6e-7;  // pow(10.0, randomRange(-8, -6));
         printf("reg: %.1e, learn: %.1e\n", reg, learnRate);
 
         // ****** Initialize Model Parameters *********
@@ -150,7 +160,7 @@ int main(int argc, char *argv[]) {
             // Iterate through as many minibatches as we need to complete an entire epoch
             int numBatches = ceil(1.0 * dataset->yTrain.size() / MINIBATCHSIZE);
             for (int batch = 0; batch < numBatches; batch++) {
-                printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch, numBatches);
+                // printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch+1, numBatches);
 
                 //  Sample a minibatch of samples from training data
                 transferMinibatch(MINIBATCHSIZE, batch, &indices, &dataset->xTrain,
@@ -203,7 +213,7 @@ int main(int argc, char *argv[]) {
                 float accuracy;
                 gpuErrchk(cudaMemcpy(&accuracy, softmaxInputs->accuracy, sizeof(float),
                                      cudaMemcpyDeviceToHost));
-                printf("Batch Accuracy: %.2f\n", accuracy);
+                // printf("Batch Accuracy: %.2f\n", accuracy);
                 runningAccuracy += accuracy;
                 runningLoss += softmaxLoss + regLoss;
                 runningRegLoss += regLoss;
@@ -211,18 +221,76 @@ int main(int argc, char *argv[]) {
             runningAccuracy = runningAccuracy / numBatches;
 
             printf("Averaged Accuracy: %f\n", runningAccuracy);
-            printf("Averaged Loss: %f\n", runningLoss);
-            printf("Regularization Loss: %f\n", runningRegLoss);
+            // printf("Averaged Loss: %f\n", runningLoss);
+            // printf("Regularization Loss: %f\n", runningRegLoss);
         }
         double ttrainend = omp_get_wtime();
         printf("Training Time: %f\n", ttrainend - ttrainstart);
+
+        // Cross validate on validation dataset
+
+        float validationAccuracy = 0;
+        // Can use this to shuffle minibatches, but since we are just validating, no reason to
+        std::vector<unsigned int> indices(dataset->yVal.size());
+        std::iota(indices.begin(), indices.end(), 0);
+
+        // Iterate through as many minibatches as we need to complete an entire epoch
+        int numBatches = ceil(1.0 * dataset->yVal.size() / MINIBATCHSIZE);
+        for (int batch = 0; batch < numBatches; batch++) {
+            // printf("Minibatch (%d/%d)\n", batch+1, numBatches);
+
+            //  Sample a minibatch of samples from training data
+            transferMinibatch(MINIBATCHSIZE, batch, &indices, &dataset->xVal, &dataset->yVal, dev_x,
+                              softmaxInputs->y);
+
+            // Run forward and backward passes on minibatch of data, and update the gradient
+            forward(aff1Inputs);
+
+            // This layer computes the loss and the gradient of the loss with respect to the
+            // scores input to this layer
+            softmaxLoss(softmaxInputs);
+
+            // Read accuracy off
+            float valAccuracy;
+            gpuErrchk(cudaMemcpy(&valAccuracy, softmaxInputs->accuracy, sizeof(float),
+                                 cudaMemcpyDeviceToHost));
+            // printf("Val Batch Accuracy: %.4f\n", valAccuracy);
+            validationAccuracy += valAccuracy;
+        }
+        printf("Averaged Val Accuracy: %f\n", validationAccuracy / numBatches);
     }
-    // Evaluate accuracy of classifier on validation dataset
-    float valAccuracy;
+    // Evaluate test accuracy at end if requested. Don't want to peek and optimize around this
+    if (TEST == 1) {
+        float TestAccuracy = 0;
+        // Can use this to shuffle minibatches, but since we are just validating, no reason to
+        std::vector<unsigned int> indices(dataset->yTest.size());
+        std::iota(indices.begin(), indices.end(), 0);
 
-    // TODO Do the same for xVal and yVal and evaluate accuracy
-    printf("Validation Accuracy: %f\n", valAccuracy);
+        // Iterate through as many minibatches as we need to complete an entire epoch
+        int numBatches = ceil(1.0 * dataset->yTest.size() / MINIBATCHSIZE);
+        for (int batch = 0; batch < numBatches; batch++) {
+            // printf("Minibatch (%d/%d)\n", batch+1, numBatches);
 
+            //  Sample a minibatch of samples from training data
+            transferMinibatch(MINIBATCHSIZE, batch, &indices, &dataset->xTest, &dataset->yTest,
+                              dev_x, softmaxInputs->y);
+
+            // Run forward and backward passes on minibatch of data, and update the gradient
+            forward(aff1Inputs);
+
+            // This layer computes the loss and the gradient of the loss with respect to the
+            // scores input to this layer
+            softmaxLoss(softmaxInputs);
+
+            // Read accuracy off
+            float testAcc;
+            gpuErrchk(cudaMemcpy(&testAcc, softmaxInputs->accuracy, sizeof(float),
+                                 cudaMemcpyDeviceToHost));
+            // printf("Test Batch Accuracy: %.4f\n", valAccuracy);
+            TestAccuracy += testAcc;
+        }
+        printf("Averaged Test Accuracy: %f\n", TestAccuracy / numBatches);
+    }
     // Cleanup, free memory etc
 }
 
@@ -281,7 +349,7 @@ void transferMinibatch(int minibatchSize, int batchNumber, vector<unsigned int> 
         if (indice >= y->size()) {
             indice = indice % y->size();
         }
-        int randomIndice = (*indices)[i];
+        int randomIndice = (*indices)[indice];
         //  Copy over the entire vector
         for (int dim = 0; dim < INPUTSIZE; dim++) {
             // Need to push it on in a transposed fashion. Can't just push it row by
