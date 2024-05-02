@@ -1,5 +1,5 @@
 # CS453_DNN
-Final Project for CS453. Team 2 created a deep neural network using primarily CUDA
+Team 2 programmed a deep neural network from scratch using CUDA for their final project in CS453.
 
 The network currently only runs on the CIFAR-10 Dataset. The network is composed of a single fully connected layer and a softmax classifier. It is trained through stochastic gradient descent to predict which of the 10 classifications an input image belongs to. The entire network is allocated on the GPU in memory and minibatches of data are fed into the network. For example, on the K80 a minibatch of 1000 images can be passed in at once without exceeding it's memory capacity.
 
