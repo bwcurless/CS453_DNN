@@ -28,7 +28,7 @@
 #define INPUTSIZE 3072
 #define HIDDENLAYERSIZE 100
 #define MINIBATCHSIZE 1000
-#define NUMEPOCHS 40
+#define NUMEPOCHS 100
 
 #define TEST 1
 
@@ -195,10 +195,14 @@ int main(int argc, char *argv[]) {
             int numBatches = ceil(1.0 * dataset->yTrain.size() / MINIBATCHSIZE);
             for (int batch = 0; batch < numBatches; batch++) {
                 printf("Epoch: %d, Minibatch (%d/%d)\n", epoch, batch + 1, numBatches);
+                double tTransferStart = omp_get_wtime();
 
                 //  Sample a minibatch of samples from training data
                 transferMinibatch(MINIBATCHSIZE, batch, &indices, &dataset->xTrain,
                                   &dataset->yTrain, dev_x, softmaxInputs->y);
+
+                double tTransferEnd = omp_get_wtime();
+                printf("Batch Transfer Time: %f\n", tTransferEnd - tTransferStart);
 
                 // Run forward and backward passes on minibatch of data, and update the gradient
                 forward(aff1Inputs, reluInputs, aff2Inputs);
