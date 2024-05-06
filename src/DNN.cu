@@ -28,9 +28,9 @@
 #define INPUTSIZE 3072
 #define HIDDENLAYERSIZE 100
 #define MINIBATCHSIZE 1000
-#define NUMEPOCHS 100
+#define NUMEPOCHS 1
 
-#define TEST 1
+#define TEST 0
 
 // Hyper parameters
 #define MOMENTUMDECAY 0.9

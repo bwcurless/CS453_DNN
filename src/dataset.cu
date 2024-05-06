@@ -7,7 +7,7 @@
 
 // Number of images per file
 // This is constant for cifar-10
-#define ELEM 10000
+#define ELEM 1000
 // Size of a cifar-10 image
 #define DIM 1024
 
@@ -28,7 +28,7 @@ data_t *importDataset(char *directoryPath) {
     std::vector<float> inputData;
 
     // Import first few files as Train and validation dataset
-    for (int fileNumber = 1; fileNumber < 6; fileNumber++) {
+    for (int fileNumber = 1; fileNumber < 3; fileNumber++) {
         // Test data
         std::filesystem::path filePath;
         filePath += "data_batch_";
@@ -36,7 +36,7 @@ data_t *importDataset(char *directoryPath) {
         filePath += ".bin";
         readDataFile(current, directoryPath, filePath);
         // Only add one chunk to validation set
-        if (fileNumber == 5) {
+        if (fileNumber == 2) {
             addToDataset(current, &outputData->xVal, &outputData->yVal);
         } else {
             addToDataset(current, &outputData->xTrain, &outputData->yTrain);

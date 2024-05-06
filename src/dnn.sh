@@ -79,10 +79,11 @@ module load "cuda/$cudaModule"
 # Can do arithmetic interpolation inside of $(( )). Need to escape properly
 make remake
 
-srun "./release/$outputFile" ~/datasets/cifar-10-batches-bin
+#srun "./release/$outputFile" ~/datasets/cifar-10-batches-bin
 #compute-sanitizer --tool=memcheck "./$outputFile"
 # -f overwrite profile if it exists
-#srun ncu -f -o "affine_profile" --clock-control=none --set full "./$outputFile"
+srun ncu -f -o "twoLayerProfile" --clock-control=none --set full "./release/$outputFile" ~/datasets/cifar-10-batches-bin
+
 
 echo "----------------- JOB FINISHED -------------"
 
