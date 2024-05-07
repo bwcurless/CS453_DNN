@@ -126,11 +126,11 @@ __global__ void softmaxLossUnnormalized(const softmaxLoss_t inputs) {
         imageLoss = -logf(correctClassScore / e_fSum);
 
         // printf("Image %d loss is %f\n", tid_x, imageLoss);
-        //   Each thread will reduce exponentiated score to here
+        //   Each thread will reduce loss to here
         atomicAdd(inputs.loss, imageLoss);
 
         // Compute gradient dL/df
-        // dL/df is the average of all images gradients, and is (numClasses x batchSize)
+        // dL/df is computed for all images, and is (numClasses x batchSize)
         for (int i = 0; i < inputs.numClasses; i++) {
             float dLdf_i = 0.0;
             float softmax_i = cachedScores[threadIdx.x * inputs.numClasses + i] / e_fSum;
