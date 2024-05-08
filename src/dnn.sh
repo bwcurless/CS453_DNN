@@ -1,6 +1,5 @@
 #!/bin/bash
 # Little script to compile .cu files and run sbatch
-# Pass in .cu file to build
 source ../slurm_funcs.sh
 
 # Exit if any part fails
